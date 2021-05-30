@@ -100,6 +100,29 @@ ensures forall key :: key in operations.Keys ==>
     operationsCorrectImpliesAux(input, operations.Keys, operations);
 }
 
+function obtainDependentIds(input:seq<Term>, sequence:seq<Term>, operations:map<int, (seq<Term>, bool)>, previously_visited:set<int>): (result:set<int>) 
+decreases |operations.Keys - previously_visited|, |sequence|
+requires seqIsCorrect(input, sequence, operations)
+requires operationsAreCorrect(input, operations)
+requires forall i :: i in previously_visited ==> i in operations
+requires previously_visited <= operations.Keys
+ensures forall i :: i in result ==> i in operations
+ensures |sequence| > 0 ==> elementIsCorrect(input, sequence[0], operations, [])
+ensures result <= operations.Keys
+{
+    operationsCorrectImpliesCorrect(input, operations);
+    seqCorrectImplies(input, sequence, operations);
+    if sequence == [] then {} else match sequence[0] {case Value(x) => obtainDependentIds(input, sequence[1..], operations, previously_visited) 
+                                                      case StackVar(x) => 
+                                                        if x in stackVariableFromSeq(input)
+                                                            then obtainDependentIds(input, sequence[1..], operations, previously_visited) 
+                                                        else if x in previously_visited 
+                                                            then {} 
+                                                        else 
+                                                            {x} + obtainDependentIds(input, sequence[1..], operations, previously_visited) + 
+                                                            obtainDependentIds(input, operations[x].0, operations, previously_visited + {x})}
+}
+
 // Condition
 predicate outputIsCorrect (input:seq<Term>, output:seq<Term>, operations:map<int, (seq<Term>, bool)>){
     seqIsCorrect(input, output, operations)
@@ -119,7 +142,8 @@ decreases input
 
 
 predicate isSFS (input:seq<Term>, output:seq<Term>, ops:map<int, (seq<Term>, bool)>) {
-    inputIsCorrect(input, []) && operationsAreCorrect(input, ops) && outputIsCorrect(input, output, ops) && (stackVariableFromSeq(input) !! ops.Keys)
+    inputIsCorrect(input, []) && operationsAreCorrect(input, ops) && outputIsCorrect(input, output, ops) && 
+    (stackVariableFromSeq(input) !! ops.Keys) && (obtainDependentIds(input, output, ops, {}) == ops.Keys) 
 }
 
 lemma SFSproperties(input:seq<Term>, output:seq<Term>, ops:map<int, (seq<Term>, bool)>)
@@ -209,4 +233,89 @@ requires mapIsWellDefined(input1, output1, ops1, input2, output2, ops2, dict)
     wellDefinedDict(input1, output1, ops1, dict.Keys);
     wellDefinedDict(input2, output2, ops2, dict.Values);
     equivalentSeq(input1, input2, dict) && equivalentSeq(output1, output2, dict) && equivalentOps(ops1, ops2, dict)
+}
+
+method assignTermRecursively(input1:seq<Term>, input2:seq<Term>, elem1:Term, elem2:Term, ops1:map<int,(seq<Term>, bool)>, ops2:map<int, (seq<Term>, bool)>,dict:map<int, int>) 
+    returns (solution:(bool, map<int,int>))
+{
+    match (elem1, elem2)
+        case (Value(x1), Value(x2)) => return (x1 == x2, dict);
+        case (Value(x1), StackVar(x2)) => return (false, dict);
+        case (StackVar(x1), Value(x2)) => return (false, dict);
+        case (StackVar(x1), StackVar(x2)) => 
+            if (x1 in dict){
+                return (x2 == dict[x1], dict);
+            }
+            else if (x2 in dict.Values) {
+                return (false, dict);
+            }
+            var new_dict := dict[x1 := x2];
+            if (ops1[x1].1) {
+                var sol1 := assignDictRecursively(input1, ops1[x1].0, ops1, input2, ops2[x2].0, ops2, new_dict);
+                var (b1, d1) := sol1;
+                if b1 {
+                    return (b1, d1);
+                }
+                else {
+                    var sol2 := assignDictRecursively(input1, [(ops1[x1].0)[0], (ops1[x1].0)[1]], ops1, input2, [(ops2[x2].0)[1], (ops2[x2].0)[0]], ops2, new_dict);
+                    return sol2;
+                }
+
+            }
+            else {
+                var sol3 := assignDictRecursively(input1, ops1[x1].0, ops1, input2, ops2[x2].0, ops2, new_dict);
+                return sol3;
+            }
+}
+
+method assignDictRecursively(input1:seq<Term>, output1:seq<Term>, ops1:map<int, (seq<Term>, bool)>, 
+                        input2:seq<Term>, output2:seq<Term>, ops2:map<int, (seq<Term>, bool)>, 
+                        dict:map<int, int>) returns (solution:(bool, map<int,int>))
+requires isSFS(input1, output1, ops1)
+requires isSFS(input2, output2, ops2)
+//ensures solution.0 ==> 
+{
+    if |output1| != |output2| {
+        return (false, dict);
+    }
+    if |output1| == 0 {
+        return (true, dict);
+    }
+    var assignment := assignTermRecursively(input1, input2, output1[0], output2[0], ops1, ops2, dict);
+    var (b, new_dict) := assignment;
+    if b {
+        var recursive_sol := assignDictRecursively(input1, output1[1..], ops1, input2, output2[1..], ops2, new_dict);
+        return recursive_sol;
+    }
+    else {
+        return (false, new_dict);
+    }
+}
+method areEquivalent(input1:seq<Term>, output1:seq<Term>, ops1:map<int, (seq<Term>, bool)>, 
+                              input2:seq<Term>, output2:seq<Term>, ops2:map<int, (seq<Term>, bool)>) returns (solution:(bool, map<int,int>))
+requires isSFS(input1, output1, ops1)
+requires isSFS(input2, output2, ops2)
+ensures solution.0 ==> mapIsWellDefined(input1, output1, ops1, input2, output2, ops2, solution.1) && equivalentSFS(input1, output1, ops1, input2, output2, ops2, solution.1) 
+{
+    var dict := map[];
+    if (|input1| != |input2|) || (|output1| != |output2|){
+        return (false, map[]);
+    }
+    var i := 0;
+    while i < |input1|
+    decreases |input1| - i
+    invariant 0 <= i <= |input1|
+    invariant (mapInjective(dict))
+    invariant (dict.Values == stackVariableFromSeq(input2[0..i]))
+    invariant (dict.Keys == stackVariableFromSeq(input1[0..i]))
+    invariant (forall key :: key in stackVariableFromSeq(input1[0..i]) ==> dict[key] in stackVariableFromSeq(input2[0..i]))
+    invariant (forall value :: value in stackVariableFromSeq(input2[0..i]) ==> (exists key :: key in stackVariableFromSeq(input1[0..i]) && dict[key] == value))
+    invariant forall j :: 0 <= j < |input1[0..i]| ==> match input1[j] {case Value(x1) => true case StackVar(x1) => x1 in dict}
+    invariant equivalentSeq(input1[0..i], input2[0..i], dict)
+    {
+        match (input1[i], input2[i])
+            case (StackVar(x), StackVar(y)) => dict := dict[x := y];
+        i := i + 1;
+    }
+    assert equivalentSeq(input1, input2, dict);
 }
