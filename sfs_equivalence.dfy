@@ -1,8 +1,15 @@
+
+// A basic term can be either a value or a stack variable, which contains a numerical id.
 datatype BasicTerm = Value(val:int) | StackVar(id:int)
+
+// Composite elements can be either conmutative or non-conmutative. In the first case, the functor
+// can only have two parameters.
 datatype StackElem = Op(id:int, input_stack:seq<BasicTerm>) | COp(id:int, elem1:BasicTerm, elem2:BasicTerm)
+
+// An abstract SFS contains an initial stack, a map and the output stack.
 datatype ASFS = SFS(input:seq<BasicTerm>, dict:map<int,StackElem>, output:seq<BasicTerm>)
 
-// Auxiliary predicates and functions
+// *** Auxiliary predicates and functions
 
 predicate isStackVar(el:BasicTerm)
 {
@@ -18,8 +25,9 @@ requires isStackVar(el)
         case StackVar(x) => x
 }
 
-// Input related predicates, functions and lemmas
+// *** Input related predicates, functions and lemmas
  
+// Given a initial stack, returns the ids from StackVar elements
 function method idsFromInput (input:seq<BasicTerm>) : (sol:set<int>)
 decreases input
 ensures forall elem :: elem in sol ==> StackVar(elem) in input
@@ -27,11 +35,12 @@ ensures forall elem :: elem in sol ==> StackVar(elem) in input
     if input == [] then {}
     else 
         match input[0] {
-            case Value(val)   => {}
+            case Value(val)   => idsFromInput(input[1..])
             case StackVar(id) => {id} + idsFromInput(input[1..])
         }
 }
 
+// The input stack can only contain stack variables
 predicate allVarsAreStackVar (input:seq<BasicTerm>)
 decreases input
 {
@@ -43,6 +52,7 @@ decreases input
         }
 }
 
+// No identifier can be repeated in the initial stack
 predicate noRepeatedStackVar (input:seq<BasicTerm>, previously_ids:set<int>)
 decreases input
 {
@@ -54,7 +64,7 @@ decreases input
         }
 }
 
-
+// Returns the identifier from element pos in the initial stack
 function method atId(input:seq<BasicTerm>, pos:int) : (id:int)
 requires 0 <= pos < |input|
 requires allVarsAreStackVar(input)
@@ -64,6 +74,8 @@ ensures id in idsFromInput(input)
     if pos == 0 then match input[0] case StackVar(x) => x else atId(input, pos - 1)
 }
 
+// Given an id that corresponds to a stack variable in the initial stack, returns
+// its position
 function method getPos(input:seq<BasicTerm>, id:int) : (pos:int)
 requires id in idsFromInput(input)
 requires allVarsAreStackVar(input)
@@ -75,13 +87,16 @@ ensures match input[pos] {case Value(x) => false case StackVar(x) => x == id}
         case StackVar(x) => if x == id then 0 else 1 + getPos(input[1..], id)
 }
 
-
+// An input stack is well defined iff there are no numerical values and no repeated ids
 predicate initialInputIsWellDefined (input:seq<BasicTerm>)
 {
     allVarsAreStackVar(input) && noRepeatedStackVar(input, {})
 }
 
+// *** Dict related definitions
 
+// All functors in the dict are composed of parameters whose ids are either ids in the input stack
+// or ids in the dictionary
 predicate idsInDictAreWellDelimited(inputStack:seq<BasicTerm>, dict:map<int, StackElem>) 
 {
     forall key :: key in dict ==>
@@ -103,6 +118,10 @@ predicate idsInDictAreWellDelimited(inputStack:seq<BasicTerm>, dict:map<int, Sta
                     }
 }
 
+// A well defined map has to ensure that no cycle can appear among definitions. This means that every dict element can
+// be eventually reduced to an expression that depends on the ids in the initial stack and numerical values.
+// Thus, when studying composite elements, I cannot "repeat" elements that I've already traversed. This property is specified
+// in terms of previously_ids set, that stores all operations ids that have been traversed in current recursive call
 predicate dictElementConverges(inputStack:seq<BasicTerm>, dict:map<int, StackElem>, key:int, previously_ids:set<int>)
 decreases dict.Keys - previously_ids
 requires previously_ids <= dict.Keys
@@ -126,21 +145,25 @@ requires idsInDictAreWellDelimited(inputStack, dict)
                 case StackVar(x1) => if x1 in idsFromInput(inputStack) then true else dictElementConverges(inputStack, dict, x1, previously_ids + {id} )}
 }
 
+// A dict is well defined if all elements converge and its keys are not contained in the initial stack ids'
 predicate dictIsWellDefined(inputStack:seq<BasicTerm>, dict:map<int, StackElem>)
 {
     (dict.Keys * idsFromInput(inputStack) == {}) && idsInDictAreWellDelimited(inputStack, dict) 
     && (forall key :: key in dict ==> dictElementConverges(inputStack, dict, key, {}))
 }
 
-// Output related definitions
+// *** Output related definitions
 
+// An output stack is well defined if the stack variables that appear in it either correspond to the ids in the initial
+// stack or in the dict
 predicate outputIsWellDefined(inputStack:seq<BasicTerm>, dict:map<int, StackElem>, output:seq<BasicTerm>)
 {
     forall elem :: elem in output ==> match elem {case Value(x) => true case StackVar(id) => id in dict || id in idsFromInput(inputStack)}
 }
 
-// SFS related definitions
+// *** SFS related definitions
 
+// A SFS must satisfy the conditions from the initial stack, the final one and the dict
 predicate isSFS(sfs:ASFS)
 {
     match sfs 
@@ -149,7 +172,13 @@ predicate isSFS(sfs:ASFS)
 
 // Comparison related predicates: (b:bool)
 
-
+// Predicate to compare two operations of the dict. Both operations must be either conmutative or non-conmutative,
+// and contain the same number of element in the former case. If that it's the case, two operations are equivalent iff
+// their params are equivalent. Params can be equivalent according to the following cases, considering conmutativity:
+// (i) Both params are the same numerical value
+// (ii) Both params correspond to stack variables in the initial stack and share the same position
+// (iii) Both params correspond to other operands and they satisfy this property
+// All elements converge, so this definition is well defined.
 predicate compareStackElem(input1:seq<BasicTerm>, input2:seq<BasicTerm>, dict1:map<int, StackElem>, dict2:map<int, StackElem>, 
                            key1:int, key2:int, prev_ids1:set<int>, prev_ids2:set<int>)
 decreases |dict1.Keys - prev_ids1|
@@ -234,6 +263,8 @@ requires dict2.Keys * idsFromInput(input2) == {}
         case (Op(id1, l1), COp(id2, x2, y2))  => false
 }
 
+// Two SFS are equivalent if the size of both initial and final stack is the same, and
+// if all stack variables in the final stack are equivalent according to the definition above.
 predicate areEquivalent(sfs1:ASFS, sfs2:ASFS)
 requires isSFS(sfs1)
 requires isSFS(sfs2)
@@ -257,6 +288,8 @@ requires isSFS(sfs2)
 
 // Verification related methods
 
+// This method compares two elements following the ideas above. Note that for conmutativity, we have to explore
+// two possibilities with params.
 method compareDictElems(input1:seq<BasicTerm>, input2:seq<BasicTerm>, dict1:map<int, StackElem>, dict2:map<int, StackElem>, 
                            key1:int, key2:int, prev_ids1:set<int>, prev_ids2:set<int>) returns (b:bool)
 decreases |dict1.Keys - prev_ids1|
@@ -439,6 +472,8 @@ ensures b == compareStackElem(input1, input2, dict1, dict2, key1, key2, prev_ids
 }
 
 
+// Method for checking two sfs are equivalent. It is sound and complete, and
+// follows the idea from the predicate
 method areEquivalentSFS(sfs1:ASFS, sfs2:ASFS) returns (b:bool)
 requires isSFS(sfs1)
 requires isSFS(sfs2)
@@ -499,6 +534,8 @@ ensures b == areEquivalent(sfs1, sfs2)
             }
 }
 
+// In a future, for defining a dict that links stack variables in the initial stack
+// whose position is the same, to avoid obtaining the position each time.
 
 /*
 lemma initialInputProperties(input:seq<BasicTerm>, previously_ids:set<int>)
