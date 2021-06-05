@@ -11,7 +11,7 @@ predicate isStackVar(el:BasicTerm)
         case StackVar(x) => true
 }
 
-function getId(el:BasicTerm) : int
+function method getId(el:BasicTerm) : int
 requires isStackVar(el)
 {
     match el 
@@ -20,7 +20,7 @@ requires isStackVar(el)
 
 // Input related predicates, functions and lemmas
  
-function idsFromInput (input:seq<BasicTerm>) : (sol:set<int>)
+function method idsFromInput (input:seq<BasicTerm>) : (sol:set<int>)
 decreases input
 ensures forall elem :: elem in sol ==> StackVar(elem) in input
 {
@@ -55,7 +55,7 @@ decreases input
 }
 
 
-function atId(input:seq<BasicTerm>, pos:int) : (id:int)
+function method atId(input:seq<BasicTerm>, pos:int) : (id:int)
 requires 0 <= pos < |input|
 requires allVarsAreStackVar(input)
 ensures StackVar(id) in input
@@ -64,7 +64,7 @@ ensures id in idsFromInput(input)
     if pos == 0 then match input[0] case StackVar(x) => x else atId(input, pos - 1)
 }
 
-function getPos(input:seq<BasicTerm>, id:int) : (pos:int)
+function method getPos(input:seq<BasicTerm>, id:int) : (pos:int)
 requires id in idsFromInput(input)
 requires allVarsAreStackVar(input)
 ensures 0 <= pos < |input|
@@ -80,127 +80,27 @@ predicate initialInputIsWellDefined (input:seq<BasicTerm>)
 {
     allVarsAreStackVar(input) && noRepeatedStackVar(input, {})
 }
-/*
 
-lemma initialInputProperties(input:seq<BasicTerm>, previously_ids:set<int>)
-requires initialInputIsWellDefined(input, previously_ids)
-ensures idsFromInput(input) * previously_ids == {}
-ensures |input| > 0 ==> idsFromInput(input[1..]) < idsFromInput(input)
-{
-
-}
-
-predicate mapInjective<U,V>(m: map<U,V>)
-{
-	forall a,b :: a in m && b in m ==> (a != b ==> m[a] != m[b])
-}
-
-
-function obtainTransformationAuxiliar(initial1:seq<BasicTerm>, initial2:seq<BasicTerm>, previously_ids1:set<int>, previously_ids2:set<int>) : (sol:map<int,int>)
-decreases initial1
-requires initialInputIsWellDefined(initial1, previously_ids1)
-requires initialInputIsWellDefined(initial2, previously_ids2)
-requires |initial1| == |initial2|
-requires previously_ids1 * idsFromInput(initial1) == {}
-requires previously_ids2 * idsFromInput(initial2) == {}
-ensures sol.Keys == idsFromInput(initial1)
-ensures sol.Values == idsFromInput(initial2)
-ensures mapInjective(sol)
-{
-    if |initial1| == 0 
-        then map[]
-    else  
-        match (initial1[0], initial2[0])
-            case (StackVar(id1), StackVar(id2)) => 
-                initialInputProperties(initial1, previously_ids1);
-                initialInputProperties(initial2, previously_ids2);
-                var previous_map := obtainTransformationAuxiliar(initial1[1..], initial2[1..], previously_ids1 + {id1}, previously_ids2 + {id2}); 
-                previous_map[id1 := id2] 
-}
-
-function obtainTransformation(initial1:seq<BasicTerm>, initial2:seq<BasicTerm>) : (sol:map<int,int>)
-requires initialInputIsWellDefined(initial1, {})
-requires initialInputIsWellDefined(initial2, {})
-requires |initial1| == |initial2|
-ensures sol.Keys == idsFromInput(initial1)
-ensures sol.Values == idsFromInput(initial2)
-ensures mapInjective(sol)
-{
-    obtainTransformationAuxiliar(initial1, initial2, {}, {})
-}/*
-
-lemma initialInputProperties(input:seq<BasicTerm>, previously_ids:set<int>)
-requires initialInputIsWellDefined(input, previously_ids)
-ensures idsFromInput(input) * previously_ids == {}
-ensures |input| > 0 ==> idsFromInput(input[1..]) < idsFromInput(input)
-{
-
-}
-
-predicate mapInjective<U,V>(m: map<U,V>)
-{
-	forall a,b :: a in m && b in m ==> (a != b ==> m[a] != m[b])
-}
-
-
-
-
-
-function obtainTransformationAuxiliar(initial1:seq<BasicTerm>, initial2:seq<BasicTerm>, previously_ids1:set<int>, previously_ids2:set<int>) : (sol:map<int,int>)
-decreases initial1
-requires initialInputIsWellDefined(initial1, previously_ids1)
-requires initialInputIsWellDefined(initial2, previously_ids2)
-requires |initial1| == |initial2|
-requires previously_ids1 * idsFromInput(initial1) == {}
-requires previously_ids2 * idsFromInput(initial2) == {}
-ensures sol.Keys == idsFromInput(initial1)
-ensures sol.Values == idsFromInput(initial2)
-ensures mapInjective(sol)
-{
-    if |initial1| == 0 
-        then map[]
-    else  
-        match (initial1[0], initial2[0])
-            case (StackVar(id1), StackVar(id2)) => 
-                initialInputProperties(initial1, previously_ids1);
-                initialInputProperties(initial2, previously_ids2);
-                var previous_map := obtainTransformationAuxiliar(initial1[1..], initial2[1..], previously_ids1 + {id1}, previously_ids2 + {id2}); 
-                previous_map[id1 := id2] 
-}
-
-function obtainTransformation(initial1:seq<BasicTerm>, initial2:seq<BasicTerm>) : (sol:map<int,int>)
-requires initialInputIsWellDefined(initial1, {})
-requires initialInputIsWellDefined(initial2, {})
-requires |initial1| == |initial2|
-ensures sol.Keys == idsFromInput(initial1)
-ensures sol.Values == idsFromInput(initial2)
-ensures mapInjective(sol)
-{
-    obtainTransformationAuxiliar(initial1, initial2, {}, {})
-}*/
 
 predicate idsInDictAreWellDelimited(inputStack:seq<BasicTerm>, dict:map<int, StackElem>) 
-decreases |dict|
 {
-    if |dict| == 0 then true else 
-    var key :| key in dict;
-    idsInDictAreWellDelimited(inputStack, dict - {key}) &&
-    match dict[key] =>
-        case Op(id, l) =>
-            id == key && 
-            forall i :: 0 <= i < |l| ==> match l[i]{
-                    case Value(x) => true 
-                    case StackVar(id2) =>  (id2 in idsFromInput(inputStack) || id2 in dict)}
-        case COp(id, x1, x2) => 
-            id == key &&
-            match x1 {
-                    case Value(x) => true 
-                    case StackVar(id2) => id2 in idsFromInput(inputStack) || id2 in dict
-                } 
-                && match x2 {
-                    case Value(x) => true 
-                    case StackVar(id2) => id2 in idsFromInput(inputStack) || id2 in dict
-                }
+    forall key :: key in dict ==>
+        match dict[key]
+            case Op(id, l) =>
+                id == key && 
+                (forall i :: 0 <= i < |l| ==> match l[i]{
+                        case Value(x) => true 
+                        case StackVar(id2) =>  (id2 in idsFromInput(inputStack) || id2 in dict)})
+            case COp(id, x1, x2) => 
+                id == key &&
+                match x1 {
+                        case Value(x) => true 
+                        case StackVar(id2) => id2 in idsFromInput(inputStack) || id2 in dict
+                    } 
+                    && match x2 {
+                        case Value(x) => true 
+                        case StackVar(id2) => id2 in idsFromInput(inputStack) || id2 in dict
+                    }
 }
 
 predicate dictElementConverges(inputStack:seq<BasicTerm>, dict:map<int, StackElem>, key:int, previously_ids:set<int>)
@@ -240,7 +140,6 @@ predicate outputIsWellDefined(inputStack:seq<BasicTerm>, dict:map<int, StackElem
 }
 
 // SFS related definitions
-
 
 predicate isSFS(sfs:ASFS)
 {
@@ -372,18 +271,18 @@ requires dictElementConverges(input1, dict1, key1, prev_ids1)
 requires dictElementConverges(input2, dict2, key2, prev_ids2)
 requires dict1.Keys * idsFromInput(input1) == {}
 requires dict2.Keys * idsFromInput(input2) == {}
-ensures b == compareStackElem(input1, input2, dict1, dict2, x1, x2, prev_ids1, prev_ids2)
+ensures b == compareStackElem(input1, input2, dict1, dict2, key1, key2, prev_ids1, prev_ids2)
 {
     match (dict1[key1], dict2[key2])
         case (Op(id1, l1), Op(id2, l2)) => 
-            if (|l1| == |l2|) {
+            if (|l1| != |l2|) {
                 return false;
             }
             else {
                 var i := 0;
                 while (i < |l1|) 
                 decreases |l1| - i 
-                invariant 0 <= i < |l1|
+                invariant 0 <= i <= |l1|
                 invariant forall j :: 0 <= j < i  ==> 
                     match (l1[j], l2[j]) {
                         case (Value(x1), Value(x2)) => x1 == x2 
@@ -410,9 +309,11 @@ ensures b == compareStackElem(input1, input2, dict1, dict2, x1, x2, prev_ids1, p
                                 }      
                             }                               
                             else if (x1 in dict1 && x2 in dict2) {
-                                if !(compareDictElems(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2})){
+                                var aux := compareDictElems(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2});
+                                if (!aux){
                                     return false;
                                 }
+                                
                             }
                             else {
                                 return false;
@@ -420,58 +321,119 @@ ensures b == compareStackElem(input1, input2, dict1, dict2, x1, x2, prev_ids1, p
                         case (Value(x1), StackVar(x2)) => return false;
                         case (StackVar(x1), Value(x2)) => return false;
                     }
+                    i := i + 1;
                 }
             return true;
         }   
         case (COp(id1, el11, el12), COp(id2, el21, el22))  => 
-            (match (el11, el21) {
-                case (Value(x1), Value(x2)) => x1 == x2 
+
+            var b1 := true;
+            
+            match (el11, el21) {
+                case (Value(x1), Value(x2)) => 
+                    b1 := (x1 == x2); 
                 case (StackVar(x1), StackVar(x2)) => 
-                    if (x1 in idsFromInput(input1) && x2 in idsFromInput(input2)) 
-                        then getPos(input1, x1) == getPos(input2, x2)
-                    else if (x1 in dict1 && x2 in dict2) 
-                        then 
-                            compareStackElem(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2})
-                    else false
-                case (Value(x1), StackVar(x2)) => false
-                case (StackVar(x1), Value(x2)) => false
-            } &&
+                    if (x1 in idsFromInput(input1) && x2 in idsFromInput(input2)) {
+                        b1 :=  getPos(input1, x1) == getPos(input2, x2);
+                    }
+                    else if (x1 in dict1 && x2 in dict2) {
+                        b1 := compareDictElems(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2});
+                    }        
+                    else {
+                        b1 := false;
+                    }
+                case (Value(x1), StackVar(x2)) =>
+                    {
+                        b1 := false;
+                    }
+                case (StackVar(x1), Value(x2)) => {
+                    b1 := false;
+                }
+            }
+
+            var b2 := true;
+
             match (el12, el22) {
-                case (Value(x1), Value(x2)) => x1 == x2 
+                case (Value(x1), Value(x2)) => 
+                    b2 := (x1 == x2); 
                 case (StackVar(x1), StackVar(x2)) => 
-                    if (x1 in idsFromInput(input1) && x2 in idsFromInput(input2)) 
-                        then getPos(input1, x1) == getPos(input2, x2)
-                    else if (x1 in dict1 && x2 in dict2) 
-                        then 
-                            compareStackElem(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2})
-                    else false
-                case (Value(x1), StackVar(x2)) => false
-                case (StackVar(x1), Value(x2)) => false
-            }) ||
-            (match (el11, el22) {
-                case (Value(x1), Value(x2)) => x1 == x2 
-                case (StackVar(x1), StackVar(x2)) => 
-                    if (x1 in idsFromInput(input1) && x2 in idsFromInput(input2)) 
-                        then getPos(input1, x1) == getPos(input2, x2)
-                    else if (x1 in dict1 && x2 in dict2) 
-                        then 
-                            compareStackElem(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2})
-                    else false
-                case (Value(x1), StackVar(x2)) => false
-                case (StackVar(x1), Value(x2)) => false
-            } &&
+                    if (x1 in idsFromInput(input1) && x2 in idsFromInput(input2)) {
+                        b2 :=  getPos(input1, x1) == getPos(input2, x2);
+                    }
+                    else if (x1 in dict1 && x2 in dict2) {
+                        b2 := compareDictElems(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2});
+                    }        
+                    else {
+                        b2 := false;
+                    }
+                case (Value(x1), StackVar(x2)) =>
+                    {
+                        b2 := false;
+                    }
+                case (StackVar(x1), Value(x2)) => {
+                    b2 := false;
+                }
+            }
+
+            if (b1 && b2){
+                return true;
+            } 
+
+            b1 := true;
+            
             match (el12, el21) {
-                case (Value(x1), Value(x2)) => x1 == x2 
+                case (Value(x1), Value(x2)) => 
+                    b1 := (x1 == x2); 
                 case (StackVar(x1), StackVar(x2)) => 
-                    if (x1 in idsFromInput(input1) && x2 in idsFromInput(input2)) 
-                        then getPos(input1, x1) == getPos(input2, x2)
-                    else if (x1 in dict1 && x2 in dict2) 
-                        then 
-                            compareStackElem(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2})
-                    else false
-                case (Value(x1), StackVar(x2)) => false
-                case (StackVar(x1), Value(x2)) => false
-            })
+                    if (x1 in idsFromInput(input1) && x2 in idsFromInput(input2)) {
+                        b1 :=  getPos(input1, x1) == getPos(input2, x2);
+                    }
+                    else if (x1 in dict1 && x2 in dict2) {
+                        b1 := compareDictElems(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2});
+                    }        
+                    else {
+                        b1 := false;
+                    }
+                case (Value(x1), StackVar(x2)) =>
+                    {
+                        b1 := false;
+                    }
+                case (StackVar(x1), Value(x2)) => {
+                    b1 := false;
+                }
+            }
+
+            b2 := true;
+
+            match (el11, el22) {
+                case (Value(x1), Value(x2)) => 
+                    b2 := (x1 == x2); 
+                case (StackVar(x1), StackVar(x2)) => 
+                    if (x1 in idsFromInput(input1) && x2 in idsFromInput(input2)) {
+                        b2 :=  getPos(input1, x1) == getPos(input2, x2);
+                    }
+                    else if (x1 in dict1 && x2 in dict2) {
+                        b2 := compareDictElems(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2});
+                    }        
+                    else {
+                        b2 := false;
+                    }
+                case (Value(x1), StackVar(x2)) =>
+                    {
+                        b2 := false;
+                    }
+                case (StackVar(x1), Value(x2)) => {
+                    b1 := false;
+                }
+            }
+
+            if (b1 && b2){
+                return true;
+            } 
+            else {
+                return false;
+            }
+            
         case (COp(id1, x1, y1), Op(id2, l2))  => return false; 
         case (Op(id1, l1), COp(id2, x2, y2))  => return false;
 }
@@ -491,7 +453,7 @@ ensures b == areEquivalent(sfs1, sfs2)
                 var i := 0;
                 while i < |output1| 
                 decreases |output1| - i
-                invariant 0 <= i < |output1|
+                invariant 0 <= i <= |output1|
                 invariant (forall j :: 0 <= j < i ==> match (output1[j], output2[j])
                     {
                         case (Value(x1), Value(x2)) => x1 == x2 
@@ -520,7 +482,8 @@ ensures b == areEquivalent(sfs1, sfs2)
                             }
                             else if (x1 in dict1 && x2 in dict2) 
                             {
-                                if !compareStackElem(input1, input2, dict1, dict2, x1, x2, {}, {}){
+                                var aux := compareDictElems(input1, input2, dict1, dict2, x1, x2, {}, {});
+                                if !aux{
                                     return false;
                                 }
                             }
@@ -535,3 +498,88 @@ ensures b == areEquivalent(sfs1, sfs2)
                 return true;
             }
 }
+
+
+/*
+lemma initialInputProperties(input:seq<BasicTerm>, previously_ids:set<int>)
+requires initialInputIsWellDefined(input, previously_ids)
+ensures idsFromInput(input) * previously_ids == {}
+ensures |input| > 0 ==> idsFromInput(input[1..]) < idsFromInput(input)
+{
+}
+predicate mapInjective<U,V>(m: map<U,V>)
+{
+	forall a,b :: a in m && b in m ==> (a != b ==> m[a] != m[b])
+}
+function obtainTransformationAuxiliar(initial1:seq<BasicTerm>, initial2:seq<BasicTerm>, previously_ids1:set<int>, previously_ids2:set<int>) : (sol:map<int,int>)
+decreases initial1
+requires initialInputIsWellDefined(initial1, previously_ids1)
+requires initialInputIsWellDefined(initial2, previously_ids2)
+requires |initial1| == |initial2|
+requires previously_ids1 * idsFromInput(initial1) == {}
+requires previously_ids2 * idsFromInput(initial2) == {}
+ensures sol.Keys == idsFromInput(initial1)
+ensures sol.Values == idsFromInput(initial2)
+ensures mapInjective(sol)
+{
+    if |initial1| == 0 
+        then map[]
+    else  
+        match (initial1[0], initial2[0])
+            case (StackVar(id1), StackVar(id2)) => 
+                initialInputProperties(initial1, previously_ids1);
+                initialInputProperties(initial2, previously_ids2);
+                var previous_map := obtainTransformationAuxiliar(initial1[1..], initial2[1..], previously_ids1 + {id1}, previously_ids2 + {id2}); 
+                previous_map[id1 := id2] 
+}
+function obtainTransformation(initial1:seq<BasicTerm>, initial2:seq<BasicTerm>) : (sol:map<int,int>)
+requires initialInputIsWellDefined(initial1, {})
+requires initialInputIsWellDefined(initial2, {})
+requires |initial1| == |initial2|
+ensures sol.Keys == idsFromInput(initial1)
+ensures sol.Values == idsFromInput(initial2)
+ensures mapInjective(sol)
+{
+    obtainTransformationAuxiliar(initial1, initial2, {}, {})
+}/*
+lemma initialInputProperties(input:seq<BasicTerm>, previously_ids:set<int>)
+requires initialInputIsWellDefined(input, previously_ids)
+ensures idsFromInput(input) * previously_ids == {}
+ensures |input| > 0 ==> idsFromInput(input[1..]) < idsFromInput(input)
+{
+}
+predicate mapInjective<U,V>(m: map<U,V>)
+{
+	forall a,b :: a in m && b in m ==> (a != b ==> m[a] != m[b])
+}
+function obtainTransformationAuxiliar(initial1:seq<BasicTerm>, initial2:seq<BasicTerm>, previously_ids1:set<int>, previously_ids2:set<int>) : (sol:map<int,int>)
+decreases initial1
+requires initialInputIsWellDefined(initial1, previously_ids1)
+requires initialInputIsWellDefined(initial2, previously_ids2)
+requires |initial1| == |initial2|
+requires previously_ids1 * idsFromInput(initial1) == {}
+requires previously_ids2 * idsFromInput(initial2) == {}
+ensures sol.Keys == idsFromInput(initial1)
+ensures sol.Values == idsFromInput(initial2)
+ensures mapInjective(sol)
+{
+    if |initial1| == 0 
+        then map[]
+    else  
+        match (initial1[0], initial2[0])
+            case (StackVar(id1), StackVar(id2)) => 
+                initialInputProperties(initial1, previously_ids1);
+                initialInputProperties(initial2, previously_ids2);
+                var previous_map := obtainTransformationAuxiliar(initial1[1..], initial2[1..], previously_ids1 + {id1}, previously_ids2 + {id2}); 
+                previous_map[id1 := id2] 
+}
+function obtainTransformation(initial1:seq<BasicTerm>, initial2:seq<BasicTerm>) : (sol:map<int,int>)
+requires initialInputIsWellDefined(initial1, {})
+requires initialInputIsWellDefined(initial2, {})
+requires |initial1| == |initial2|
+ensures sol.Keys == idsFromInput(initial1)
+ensures sol.Values == idsFromInput(initial2)
+ensures mapInjective(sol)
+{
+    obtainTransformationAuxiliar(initial1, initial2, {}, {})
+}*/
