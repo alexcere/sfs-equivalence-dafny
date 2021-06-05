@@ -383,34 +383,34 @@ ensures b == compareStackElem(input1, input2, dict1, dict2, key1, key2, prev_ids
                     b1 := false;
                 }
             }
+            if (b1){
 
-            var b2 := true;
+                match (el12, el22) {
+                    case (Value(x1), Value(x2)) => 
+                        b1 := (x1 == x2); 
+                    case (StackVar(x1), StackVar(x2)) => 
+                        if (x1 in idsFromInput(input1) && x2 in idsFromInput(input2)) {
+                            b1 :=  getPos(input1, x1) == getPos(input2, x2);
+                        }
+                        else if (x1 in dict1 && x2 in dict2) {
+                            b1 := compareDictElems(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2});
+                        }        
+                        else {
+                            b1 := false;
+                        }
+                    case (Value(x1), StackVar(x2)) =>
+                        {
+                            b1 := false;
+                        }
+                    case (StackVar(x1), Value(x2)) => {
+                        b1 := false;
+                    }
+                }
 
-            match (el12, el22) {
-                case (Value(x1), Value(x2)) => 
-                    b2 := (x1 == x2); 
-                case (StackVar(x1), StackVar(x2)) => 
-                    if (x1 in idsFromInput(input1) && x2 in idsFromInput(input2)) {
-                        b2 :=  getPos(input1, x1) == getPos(input2, x2);
-                    }
-                    else if (x1 in dict1 && x2 in dict2) {
-                        b2 := compareDictElems(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2});
-                    }        
-                    else {
-                        b2 := false;
-                    }
-                case (Value(x1), StackVar(x2)) =>
-                    {
-                        b2 := false;
-                    }
-                case (StackVar(x1), Value(x2)) => {
-                    b2 := false;
+                if (b1){
+                    return true;
                 }
             }
-
-            if (b1 && b2){
-                return true;
-            } 
 
             b1 := true;
             
@@ -436,33 +436,31 @@ ensures b == compareStackElem(input1, input2, dict1, dict2, key1, key2, prev_ids
                 }
             }
 
-            b2 := true;
-
-            match (el11, el22) {
-                case (Value(x1), Value(x2)) => 
-                    b2 := (x1 == x2); 
-                case (StackVar(x1), StackVar(x2)) => 
-                    if (x1 in idsFromInput(input1) && x2 in idsFromInput(input2)) {
-                        b2 :=  getPos(input1, x1) == getPos(input2, x2);
+            if (b1){
+                
+                match (el11, el22) {
+                    case (Value(x1), Value(x2)) => 
+                        b1 := (x1 == x2); 
+                    case (StackVar(x1), StackVar(x2)) => 
+                        if (x1 in idsFromInput(input1) && x2 in idsFromInput(input2)) {
+                            b1 :=  getPos(input1, x1) == getPos(input2, x2);
+                        }
+                        else if (x1 in dict1 && x2 in dict2) {
+                            b1 := compareDictElems(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2});
+                        }        
+                        else {
+                            b1 := false;
+                        }
+                    case (Value(x1), StackVar(x2)) =>
+                        {
+                            b1 := false;
+                        }
+                    case (StackVar(x1), Value(x2)) => {
+                        b1 := false;
                     }
-                    else if (x1 in dict1 && x2 in dict2) {
-                        b2 := compareDictElems(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2});
-                    }        
-                    else {
-                        b2 := false;
-                    }
-                case (Value(x1), StackVar(x2)) =>
-                    {
-                        b2 := false;
-                    }
-                case (StackVar(x1), Value(x2)) => {
-                    b1 := false;
                 }
+                return b1;
             }
-
-            if (b1 && b2){
-                return true;
-            } 
             else {
                 return false;
             }
@@ -534,8 +532,9 @@ ensures b == areEquivalent(sfs1, sfs2)
             }
 }
 
-// In a future, for defining a dict that links stack variables in the initial stack
-// whose position is the same, to avoid obtaining the position each time.
+// In a future, for defining a dict that links stack variables in both initial stacks
+// whose position is the same. This way, we can avoid obtaining the position to compare each time
+// in the algorithm.
 
 /*
 lemma initialInputProperties(input:seq<BasicTerm>, previously_ids:set<int>)
