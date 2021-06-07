@@ -4,7 +4,7 @@ datatype BasicTerm = Value(val:int) | StackVar(id:int)
 
 // Composite elements can be either conmutative or non-conmutative. In the first case, the functor
 // can only have two parameters.
-datatype StackElem = Op(id:int, input_stack:seq<BasicTerm>) | COp(id:int, elem1:BasicTerm, elem2:BasicTerm)
+datatype StackElem = Op(input_stack:seq<BasicTerm>) | COp(elem1:BasicTerm, elem2:BasicTerm)
 
 // An abstract SFS contains an initial stack, a map and the output stack.
 datatype ASFS = SFS(input:seq<BasicTerm>, dict:map<int,StackElem>, output:seq<BasicTerm>)
@@ -101,13 +101,11 @@ predicate idsInDictAreWellDelimited(inputStack:seq<BasicTerm>, dict:map<int, Sta
 {
     forall key :: key in dict ==>
         match dict[key]
-            case Op(id, l) =>
-                id == key && 
+            case Op(l) =>
                 (forall i :: 0 <= i < |l| ==> match l[i]{
                         case Value(x) => true 
                         case StackVar(id2) =>  (id2 in idsFromInput(inputStack) || id2 in dict)})
-            case COp(id, x1, x2) => 
-                id == key &&
+            case COp(x1, x2) => 
                 match x1 {
                         case Value(x) => true 
                         case StackVar(id2) => id2 in idsFromInput(inputStack) || id2 in dict
@@ -129,20 +127,20 @@ requires key in dict
 requires idsInDictAreWellDelimited(inputStack, dict)
 {
     match dict[key]
-        case Op(id, l)       => 
-            id !in previously_ids &&
+        case Op(l)       => 
+            key !in previously_ids &&
             forall i :: 0 <= i < |l|  ==> match l[i] {
                 case Value(x) => true 
-                case StackVar(x1) => if x1 in idsFromInput(inputStack) then true else dictElementConverges(inputStack, dict, x1, previously_ids + {id} )}
-        case COp(id, el1, el2) =>
-            id !in previously_ids &&
+                case StackVar(x1) => if x1 in idsFromInput(inputStack) then true else dictElementConverges(inputStack, dict, x1, previously_ids + {key} )}
+        case COp(el1, el2) =>
+            key !in previously_ids &&
             match el1 {
                 case Value(x) => true 
-                case StackVar(x1) => if x1 in idsFromInput(inputStack) then true else dictElementConverges(inputStack, dict, x1, previously_ids + {id} )}
+                case StackVar(x1) => if x1 in idsFromInput(inputStack) then true else dictElementConverges(inputStack, dict, x1, previously_ids + {key} )}
             && 
             match el2 {
                 case Value(x) => true 
-                case StackVar(x1) => if x1 in idsFromInput(inputStack) then true else dictElementConverges(inputStack, dict, x1, previously_ids + {id} )}
+                case StackVar(x1) => if x1 in idsFromInput(inputStack) then true else dictElementConverges(inputStack, dict, x1, previously_ids + {key} )}
 }
 
 // A dict is well defined if all elements converge and its keys are not contained in the initial stack ids'
@@ -150,6 +148,9 @@ predicate dictIsWellDefined(inputStack:seq<BasicTerm>, dict:map<int, StackElem>)
 {
     (dict.Keys * idsFromInput(inputStack) == {}) && idsInDictAreWellDelimited(inputStack, dict) 
     && (forall key :: key in dict ==> dictElementConverges(inputStack, dict, key, {}))
+    && (forall id :: id in dict ==> match dict[id] {
+        case Op(l) => Op(l) !in (dict - {id}).Values 
+        case COp(x1, x2) => COp(x1, x2) !in (dict - {id}).Values && COp(x2, x1) !in (dict - {id}).Values })
 }
 
 // *** Output related definitions
@@ -195,7 +196,7 @@ requires dict1.Keys * idsFromInput(input1) == {}
 requires dict2.Keys * idsFromInput(input2) == {}
 {
     match (dict1[key1], dict2[key2])
-        case (Op(id1, l1), Op(id2, l2)) => 
+        case (Op(l1), Op(l2)) => 
             |l1| == |l2| &&
             forall i :: 0 <= i < |l1|  ==> 
                 match (l1[i], l2[i]) {
@@ -210,7 +211,7 @@ requires dict2.Keys * idsFromInput(input2) == {}
                     case (Value(x1), StackVar(x2)) => false
                     case (StackVar(x1), Value(x2)) => false
                 }
-        case (COp(id1, el11, el12), COp(id2, el21, el22))  => 
+        case (COp(el11, el12), COp(el21, el22))  => 
             (match (el11, el21) {
                 case (Value(x1), Value(x2)) => x1 == x2 
                 case (StackVar(x1), StackVar(x2)) => 
@@ -259,8 +260,8 @@ requires dict2.Keys * idsFromInput(input2) == {}
                 case (Value(x1), StackVar(x2)) => false
                 case (StackVar(x1), Value(x2)) => false
             })
-        case (COp(id1, x1, y1), Op(id2, l2))  => false 
-        case (Op(id1, l1), COp(id2, x2, y2))  => false
+        case (COp(x1, y1), Op(l2))  => false 
+        case (Op(l1), COp(x2, y2))  => false
 }
 
 // Two SFS are equivalent if the size of both initial and final stack is the same, and
@@ -307,7 +308,7 @@ requires dict2.Keys * idsFromInput(input2) == {}
 ensures b == compareStackElem(input1, input2, dict1, dict2, key1, key2, prev_ids1, prev_ids2)
 {
     match (dict1[key1], dict2[key2])
-        case (Op(id1, l1), Op(id2, l2)) => 
+        case (Op(l1), Op(l2)) => 
             if (|l1| != |l2|) {
                 return false;
             }
@@ -358,7 +359,7 @@ ensures b == compareStackElem(input1, input2, dict1, dict2, key1, key2, prev_ids
                 }
             return true;
         }   
-        case (COp(id1, el11, el12), COp(id2, el21, el22))  => 
+        case (COp(el11, el12), COp(el21, el22))  => 
 
             var b1 := true;
             
@@ -465,8 +466,8 @@ ensures b == compareStackElem(input1, input2, dict1, dict2, key1, key2, prev_ids
                 return false;
             }
             
-        case (COp(id1, x1, y1), Op(id2, l2))  => return false; 
-        case (Op(id1, l1), COp(id2, x2, y2))  => return false;
+        case (COp(x1, y1), Op(l2))  => return false; 
+        case (Op(l1), COp(x2, y2))  => return false;
 }
 
 

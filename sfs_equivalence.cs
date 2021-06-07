@@ -1,19 +1,20 @@
 // Dafny program sfs_equivalence.dfy compiled into C#
-// To recompile, use 'csc' with: /r:System.Numerics.dll
-// and choosing /target:exe or /target:library
-// You might also want to include compiler switches like:
-//     /debug /nowarn:0164 /nowarn:0219 /nowarn:1717 /nowarn:0162 /nowarn:0168
+// To recompile, you will need the libraries
+//     System.Runtime.Numerics.dll System.Collections.Immutable.dll
+// but the 'dotnet' tool in net5.0 should pick those up automatically.
+// Optionally, you may want to include compiler switches like
+//     /debug /nowarn:162,164,168,183,219,436,1717,1718
 
 using System;
 using System.Numerics;
 [assembly: DafnyAssembly.DafnySourceAttribute(@"
-// Dafny 2.3.0.10506
-// Command Line Options: /compile:2 /spillTargetCode:1 sfs_equivalence.dfy
+// Dafny 3.1.0.30421
+// Command Line Options: /compile:2 /spillTargetCode:1 /optimize sfs_equivalence.dfy
 // sfs_equivalence.dfy
 
 datatype BasicTerm = Value(val: int) | StackVar(id: int)
 
-datatype StackElem = Op(id: int, input_stack: seq<BasicTerm>) | COp(id: int, elem1: BasicTerm, elem2: BasicTerm)
+datatype StackElem = Op(input_stack: seq<BasicTerm>) | COp(elem1: BasicTerm, elem2: BasicTerm)
 
 datatype ASFS = SFS(input: seq<BasicTerm>, dict: map<int, StackElem>, output: seq<BasicTerm>)
 
@@ -43,7 +44,7 @@ function method idsFromInput(input: seq<BasicTerm>): (sol: set<int>)
   if input == [] then
     {}
   else
-    match input[0] { case Value(val) => idsFromInput(input[1..]) case StackVar(id) => {id} + idsFromInput(input[1..]) }
+    match input[0] { case Value(_mcc#0) => (var val := _mcc#0; idsFromInput(input[1..])) case StackVar(_mcc#1) => var id := _mcc#1; {id} + idsFromInput(input[1..]) }
 }
 
 predicate allVarsAreStackVar(input: seq<BasicTerm>)
@@ -52,7 +53,7 @@ predicate allVarsAreStackVar(input: seq<BasicTerm>)
   if input == [] then
     true
   else
-    match input[0] { case Value(val) => false case StackVar(id) => allVarsAreStackVar(input[1..]) }
+    match input[0] { case Value(_mcc#0) => (var val := _mcc#0; false) case StackVar(_mcc#1) => var id := _mcc#1; allVarsAreStackVar(input[1..]) }
 }
 
 predicate noRepeatedStackVar(input: seq<BasicTerm>, previously_ids: set<int>)
@@ -61,7 +62,7 @@ predicate noRepeatedStackVar(input: seq<BasicTerm>, previously_ids: set<int>)
   if input == [] then
     true
   else
-    match input[0] { case Value(val) => false case StackVar(id) => id !in previously_ids && noRepeatedStackVar(input[1..], previously_ids + {id}) }
+    match input[0] { case Value(_mcc#0) => (var val := _mcc#0; false) case StackVar(_mcc#1) => var id := _mcc#1; id !in previously_ids && noRepeatedStackVar(input[1..], previously_ids + {id}) }
 }
 
 function method atId(input: seq<BasicTerm>, pos: int): (id: int)
@@ -83,7 +84,7 @@ function method getPos(input: seq<BasicTerm>, id: int): (pos: int)
   requires id in idsFromInput(input)
   requires allVarsAreStackVar(input)
   ensures 0 <= pos < |input|
-  ensures match input[pos] { case Value(x) => false case StackVar(x) => x == id }
+  ensures match input[pos] { case Value(_mcc#0) => (var x := _mcc#0; false) case StackVar(_mcc#1) => var x := _mcc#1; x == id }
   decreases input, id
 {
   match input[0]
@@ -106,7 +107,7 @@ predicate idsInDictAreWellDelimited(inputStack: seq<BasicTerm>, dict: map<int, S
 {
   forall key: int :: 
     key in dict ==>
-      match dict[key] case Op(id, l) => id == key && (forall i :: 0 <= i < |l| ==> match l[i] { case Value(x) => true case StackVar(id2) => id2 in idsFromInput(inputStack) || id2 in dict }) case COp(id, x1, x2) => id == key && match x1 { case Value(x) => true case StackVar(id2) => id2 in idsFromInput(inputStack) || id2 in dict } && match x2 { case Value(x) => true case StackVar(id2) => id2 in idsFromInput(inputStack) || id2 in dict }
+      match dict[key] { case Op(_mcc#0) => (var l := _mcc#0; forall i :: 0 <= i < |l| ==> match l[i] { case Value(x) => true case StackVar(id2) => id2 in idsFromInput(inputStack) || id2 in dict }) case COp(_mcc#1, _mcc#2) => var x2 := _mcc#2; var x1 := _mcc#1; match x1 { case Value(x) => true case StackVar(id2) => id2 in idsFromInput(inputStack) || id2 in dict } && match x2 { case Value(x) => true case StackVar(id2) => id2 in idsFromInput(inputStack) || id2 in dict } }
 }
 
 predicate dictElementConverges(inputStack: seq<BasicTerm>, dict: map<int, StackElem>, key: int, previously_ids: set<int>)
@@ -116,15 +117,15 @@ predicate dictElementConverges(inputStack: seq<BasicTerm>, dict: map<int, StackE
   decreases dict.Keys - previously_ids
 {
   match dict[key]
-  case Op(id, l) =>
-    id !in previously_ids &&
+  case Op(l) =>
+    key !in previously_ids &&
     forall i :: 
       0 <= i < |l| ==>
-        match l[i] { case Value(x) => true case StackVar(x1) => if x1 in idsFromInput(inputStack) then true else dictElementConverges(inputStack, dict, x1, previously_ids + {id}) }
-  case COp(id, el1, el2) =>
-    id !in previously_ids &&
-    match el1 { case Value(x) => true case StackVar(x1) => (if x1 in idsFromInput(inputStack) then true else dictElementConverges(inputStack, dict, x1, previously_ids + {id})) } &&
-    match el2 { case Value(x) => true case StackVar(x1) => if x1 in idsFromInput(inputStack) then true else dictElementConverges(inputStack, dict, x1, previously_ids + {id}) }
+        match l[i] { case Value(x) => true case StackVar(x1) => if x1 in idsFromInput(inputStack) then true else dictElementConverges(inputStack, dict, x1, previously_ids + {key}) }
+  case COp(el1, el2) =>
+    key !in previously_ids &&
+    match el1 { case Value(x) => true case StackVar(x1) => (if x1 in idsFromInput(inputStack) then true else dictElementConverges(inputStack, dict, x1, previously_ids + {key})) } &&
+    match el2 { case Value(x) => true case StackVar(x1) => if x1 in idsFromInput(inputStack) then true else dictElementConverges(inputStack, dict, x1, previously_ids + {key}) }
 }
 
 predicate dictIsWellDefined(inputStack: seq<BasicTerm>, dict: map<int, StackElem>)
@@ -132,9 +133,12 @@ predicate dictIsWellDefined(inputStack: seq<BasicTerm>, dict: map<int, StackElem
 {
   dict.Keys * idsFromInput(inputStack) == {} &&
   idsInDictAreWellDelimited(inputStack, dict) &&
-  forall key: int :: 
+  (forall key: int :: 
     key in dict ==>
-      dictElementConverges(inputStack, dict, key, {})
+      dictElementConverges(inputStack, dict, key, {})) &&
+  forall id: int :: 
+    id in dict ==>
+      match dict[id] { case Op(_mcc#0) => (var l := _mcc#0; Op(l) !in (dict - {id}).Values) case COp(_mcc#1, _mcc#2) => var x2 := _mcc#2; var x1 := _mcc#1; COp(x1, x2) !in (dict - {id}).Values && COp(x2, x1) !in (dict - {id}).Values }
 }
 
 predicate outputIsWellDefined(inputStack: seq<BasicTerm>, dict: map<int, StackElem>, output: seq<BasicTerm>)
@@ -142,7 +146,7 @@ predicate outputIsWellDefined(inputStack: seq<BasicTerm>, dict: map<int, StackEl
 {
   forall elem: BasicTerm :: 
     elem in output ==>
-      match elem { case Value(x) => true case StackVar(id) => id in dict || id in idsFromInput(inputStack) }
+      match elem { case Value(_mcc#0) => (var x := _mcc#0; true) case StackVar(_mcc#1) => var id := _mcc#1; id in dict || id in idsFromInput(inputStack) }
 }
 
 predicate isSFS(sfs: ASFS)
@@ -170,16 +174,16 @@ predicate compareStackElem(input1: seq<BasicTerm>, input2: seq<BasicTerm>, dict1
   decreases |dict1.Keys - prev_ids1|
 {
   match (dict1[key1], dict2[key2])
-  case (Op(id1, l1), Op(id2, l2)) =>
+  case (Op(l1), Op(l2)) =>
     |l1| == |l2| &&
     forall i :: 
       0 <= i < |l1| ==>
-        match (l1[i], l2[i]) { case (Value(x1), Value(x2)) => x1 == x2 case (StackVar(x1), StackVar(x2)) => (if x1 in idsFromInput(input1) && x2 in idsFromInput(input2) then getPos(input1, x1) == getPos(input2, x2) else if x1 in dict1 && x2 in dict2 then compareStackElem(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2}) else false) case (Value(x1), StackVar(x2)) => false case (StackVar(x1), Value(x2)) => false }
-  case (COp(id1, el11, el12), COp(id2, el21, el22)) =>
-    (match (el11, el21) { case (Value(x1), Value(x2)) => x1 == x2 case (StackVar(x1), StackVar(x2)) => (if x1 in idsFromInput(input1) && x2 in idsFromInput(input2) then getPos(input1, x1) == getPos(input2, x2) else if x1 in dict1 && x2 in dict2 then compareStackElem(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2}) else false) case (Value(x1), StackVar(x2)) => false case (StackVar(x1), Value(x2)) => false } && match (el12, el22) { case (Value(x1), Value(x2)) => x1 == x2 case (StackVar(x1), StackVar(x2)) => (if x1 in idsFromInput(input1) && x2 in idsFromInput(input2) then getPos(input1, x1) == getPos(input2, x2) else if x1 in dict1 && x2 in dict2 then compareStackElem(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2}) else false) case (Value(x1), StackVar(x2)) => false case (StackVar(x1), Value(x2)) => false }) || (match (el11, el22) { case (Value(x1), Value(x2)) => x1 == x2 case (StackVar(x1), StackVar(x2)) => (if x1 in idsFromInput(input1) && x2 in idsFromInput(input2) then getPos(input1, x1) == getPos(input2, x2) else if x1 in dict1 && x2 in dict2 then compareStackElem(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2}) else false) case (Value(x1), StackVar(x2)) => false case (StackVar(x1), Value(x2)) => false } && match (el12, el21) { case (Value(x1), Value(x2)) => x1 == x2 case (StackVar(x1), StackVar(x2)) => (if x1 in idsFromInput(input1) && x2 in idsFromInput(input2) then getPos(input1, x1) == getPos(input2, x2) else if x1 in dict1 && x2 in dict2 then compareStackElem(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2}) else false) case (Value(x1), StackVar(x2)) => false case (StackVar(x1), Value(x2)) => false })
-  case (COp(id1, x1, y1), Op(id2, l2)) =>
+        match (l1[i], l2[i]) { case _#Make2(Value(x1),Value(x2)) => x1 == x2 case _#Make2(StackVar(x1),StackVar(x2)) => (if x1 in idsFromInput(input1) && x2 in idsFromInput(input2) then getPos(input1, x1) == getPos(input2, x2) else if x1 in dict1 && x2 in dict2 then compareStackElem(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2}) else false) case _#Make2(Value(x1),StackVar(x2)) => false case _#Make2(StackVar(x1),Value(x2)) => false }
+  case (COp(el11, el12), COp(el21, el22)) =>
+    (match (el11, el21) { case _#Make2(Value(x1),Value(x2)) => x1 == x2 case _#Make2(StackVar(x1),StackVar(x2)) => (if x1 in idsFromInput(input1) && x2 in idsFromInput(input2) then getPos(input1, x1) == getPos(input2, x2) else if x1 in dict1 && x2 in dict2 then compareStackElem(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2}) else false) case _#Make2(Value(x1),StackVar(x2)) => false case _#Make2(StackVar(x1),Value(x2)) => false } && match (el12, el22) { case _#Make2(Value(x1),Value(x2)) => x1 == x2 case _#Make2(StackVar(x1),StackVar(x2)) => (if x1 in idsFromInput(input1) && x2 in idsFromInput(input2) then getPos(input1, x1) == getPos(input2, x2) else if x1 in dict1 && x2 in dict2 then compareStackElem(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2}) else false) case _#Make2(Value(x1),StackVar(x2)) => false case _#Make2(StackVar(x1),Value(x2)) => false }) || (match (el11, el22) { case _#Make2(Value(x1),Value(x2)) => x1 == x2 case _#Make2(StackVar(x1),StackVar(x2)) => (if x1 in idsFromInput(input1) && x2 in idsFromInput(input2) then getPos(input1, x1) == getPos(input2, x2) else if x1 in dict1 && x2 in dict2 then compareStackElem(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2}) else false) case _#Make2(Value(x1),StackVar(x2)) => false case _#Make2(StackVar(x1),Value(x2)) => false } && match (el12, el21) { case _#Make2(Value(x1),Value(x2)) => x1 == x2 case _#Make2(StackVar(x1),StackVar(x2)) => (if x1 in idsFromInput(input1) && x2 in idsFromInput(input2) then getPos(input1, x1) == getPos(input2, x2) else if x1 in dict1 && x2 in dict2 then compareStackElem(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2}) else false) case _#Make2(Value(x1),StackVar(x2)) => false case _#Make2(StackVar(x1),Value(x2)) => false })
+  case (COp(x1, y1), Op(l2)) =>
     false
-  case (Op(id1, l1), COp(id2, x2, y2)) =>
+  case (Op(l1), COp(x2, y2)) =>
     false
 }
 
@@ -194,7 +198,7 @@ predicate areEquivalent(sfs1: ASFS, sfs2: ASFS)
     |output1| == |output2| &&
     forall i :: 
       0 <= i < |output1| ==>
-        match (output1[i], output2[i]) { case (Value(x1), Value(x2)) => x1 == x2 case (StackVar(x1), StackVar(x2)) => (if x1 in idsFromInput(input1) && x2 in idsFromInput(input2) then getPos(input1, x1) == getPos(input2, x2) else if x1 in dict1 && x2 in dict2 then compareStackElem(input1, input2, dict1, dict2, x1, x2, {}, {}) else false) case (StackVar(x1), Value(x2)) => false case (Value(x1), StackVar(x2)) => false }
+        match (output1[i], output2[i]) { case _#Make2(Value(x1),Value(x2)) => x1 == x2 case _#Make2(StackVar(x1),StackVar(x2)) => (if x1 in idsFromInput(input1) && x2 in idsFromInput(input2) then getPos(input1, x1) == getPos(input2, x2) else if x1 in dict1 && x2 in dict2 then compareStackElem(input1, input2, dict1, dict2, x1, x2, {}, {}) else false) case _#Make2(StackVar(x1),Value(x2)) => false case _#Make2(Value(x1),StackVar(x2)) => false }
 }
 
 method compareDictElems(input1: seq<BasicTerm>, input2: seq<BasicTerm>, dict1: map<int, StackElem>, dict2: map<int, StackElem>, key1: int, key2: int, prev_ids1: set<int>, prev_ids2: set<int>)
@@ -214,14 +218,14 @@ method compareDictElems(input1: seq<BasicTerm>, input2: seq<BasicTerm>, dict1: m
   decreases |dict1.Keys - prev_ids1|
 {
   match (dict1[key1], dict2[key2])
-  case (Op(id1, l1), Op(id2, l2)) =>
+  case (Op(l1), Op(l2)) =>
     if |l1| != |l2| {
       return false;
     } else {
       var i := 0;
       while i < |l1|
         invariant 0 <= i <= |l1|
-        invariant forall j :: 0 <= j < i ==> match (l1[j], l2[j]) { case (Value(x1), Value(x2)) => x1 == x2 case (StackVar(x1), StackVar(x2)) => (if x1 in idsFromInput(input1) && x2 in idsFromInput(input2) then getPos(input1, x1) == getPos(input2, x2) else if x1 in dict1 && x2 in dict2 then compareStackElem(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2}) else false) case (Value(x1), StackVar(x2)) => false case (StackVar(x1), Value(x2)) => false }
+        invariant forall j :: 0 <= j < i ==> match (l1[j], l2[j]) { case _#Make2(Value(x1),Value(x2)) => x1 == x2 case _#Make2(StackVar(x1),StackVar(x2)) => (if x1 in idsFromInput(input1) && x2 in idsFromInput(input2) then getPos(input1, x1) == getPos(input2, x2) else if x1 in dict1 && x2 in dict2 then compareStackElem(input1, input2, dict1, dict2, x1, x2, prev_ids1 + {key1}, prev_ids2 + {key2}) else false) case _#Make2(Value(x1),StackVar(x2)) => false case _#Make2(StackVar(x1),Value(x2)) => false }
         decreases |l1| - i
       {
         match (l1[i], l2[i]) {
@@ -251,7 +255,7 @@ method compareDictElems(input1: seq<BasicTerm>, input2: seq<BasicTerm>, dict1: m
       }
       return true;
     }
-  case (COp(id1, el11, el12), COp(id2, el21, el22)) =>
+  case (COp(el11, el12), COp(el21, el22)) =>
     var b1 := true;
     match (el11, el21) {
       case (Value(x1), Value(x2)) =>
@@ -344,9 +348,9 @@ method compareDictElems(input1: seq<BasicTerm>, input2: seq<BasicTerm>, dict1: m
     } else {
       return false;
     }
-  case (COp(id1, x1, y1), Op(id2, l2)) =>
+  case (COp(x1, y1), Op(l2)) =>
     return false;
-  case (Op(id1, l1), COp(id2, x2, y2)) =>
+  case (Op(l1), COp(x2, y2)) =>
     return false;
 }
 
@@ -364,7 +368,7 @@ method areEquivalentSFS(sfs1: ASFS, sfs2: ASFS) returns (b: bool)
       var i := 0;
       while i < |output1|
         invariant 0 <= i <= |output1|
-        invariant forall j :: 0 <= j < i ==> match (output1[j], output2[j]) { case (Value(x1), Value(x2)) => x1 == x2 case (StackVar(x1), StackVar(x2)) => (if x1 in idsFromInput(input1) && x2 in idsFromInput(input2) then getPos(input1, x1) == getPos(input2, x2) else if x1 in dict1 && x2 in dict2 then compareStackElem(input1, input2, dict1, dict2, x1, x2, {}, {}) else false) case (StackVar(x1), Value(x2)) => false case (Value(x1), StackVar(x2)) => false }
+        invariant forall j :: 0 <= j < i ==> match (output1[j], output2[j]) { case _#Make2(Value(x1),Value(x2)) => x1 == x2 case _#Make2(StackVar(x1),StackVar(x2)) => (if x1 in idsFromInput(input1) && x2 in idsFromInput(input2) then getPos(input1, x1) == getPos(input2, x2) else if x1 in dict1 && x2 in dict2 then compareStackElem(input1, input2, dict1, dict2, x1, x2, {}, {}) else false) case _#Make2(StackVar(x1),Value(x2)) => false case _#Make2(Value(x1),StackVar(x2)) => false }
         decreases |output1| - i
       {
         match (output1[i], output2[i]) {
@@ -397,6 +401,9 @@ method areEquivalentSFS(sfs1: ASFS, sfs2: ASFS) returns (b: bool)
 }
 ")]
 
+// Copyright by the contributors to the Dafny Project
+// SPDX-License-Identifier: MIT
+
 #if ISDAFNYRUNTIMELIB
 using System; // for Func
 using System.Numerics;
@@ -413,24 +420,41 @@ namespace DafnyAssembly {
 namespace Dafny
 {
   using System.Collections.Generic;
-  // set this option if you want to use System.Collections.Immutable and if you know what you're doing.
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
   using System.Collections.Immutable;
   using System.Linq;
-#endif
 
-  public class Set<T>
+  public interface ISet<out T>
   {
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
+    int Count { get; }
+    long LongCount { get; }
+    IEnumerable<T> Elements { get; }
+    IEnumerable<ISet<T>> AllSubsets { get; }
+    bool Contains<G>(G t);
+    bool EqualsAux(ISet<object> other);
+    ISet<U> DowncastClone<U>(Func<T, U> converter);
+  }
+
+  public class Set<T> : ISet<T>
+  {
     readonly ImmutableHashSet<T> setImpl;
     readonly bool containsNull;
     Set(ImmutableHashSet<T> d, bool containsNull) {
       this.setImpl = d;
       this.containsNull = containsNull;
     }
-    public static readonly Set<T> Empty = new Set<T>(ImmutableHashSet<T>.Empty, false);
-    public static Set<T> FromElements(params T[] values) {
+    public static readonly ISet<T> Empty = new Set<T>(ImmutableHashSet<T>.Empty, false);
+
+    private static readonly TypeDescriptor<ISet<T>> _TYPE = new Dafny.TypeDescriptor<ISet<T>>(Empty);
+    public static TypeDescriptor<ISet<T>> _TypeDescriptor() {
+      return _TYPE;
+    }
+
+    public static ISet<T> FromElements(params T[] values) {
       return FromCollection(values);
+    }
+
+    public static Set<T> FromISet(ISet<T> s) {
+      return s as Set<T> ?? FromCollection(s.Elements);
     }
     public static Set<T> FromCollection(IEnumerable<T> values) {
       var d = ImmutableHashSet<T>.Empty.ToBuilder();
@@ -444,7 +468,7 @@ namespace Dafny
       }
       return new Set<T>(d.ToImmutable(), containsNull);
     }
-    public static Set<T> FromCollectionPlusOne(IEnumerable<T> values, T oneMoreValue) {
+    public static ISet<T> FromCollectionPlusOne(IEnumerable<T> values, T oneMoreValue) {
       var d = ImmutableHashSet<T>.Empty.ToBuilder();
       var containsNull = false;
       if (oneMoreValue == null) {
@@ -460,6 +484,18 @@ namespace Dafny
         }
       }
       return new Set<T>(d.ToImmutable(), containsNull);
+    }
+    public ISet<U> DowncastClone<U>(Func<T, U> converter) {
+      if (this is ISet<U> th) {
+        return th;
+      } else {
+        var d = ImmutableHashSet<U>.Empty.ToBuilder();
+        foreach (var t in this.setImpl) {
+          var u = converter(t);
+          d.Add(u);
+        }
+        return new Set<U>(d.ToImmutable(), this.containsNull);
+      }
     }
     public int Count {
       get { return this.setImpl.Count + (containsNull ? 1 : 0); }
@@ -477,67 +513,25 @@ namespace Dafny
         }
       }
     }
-#else
-    readonly HashSet<T> setImpl;
-    Set(HashSet<T> s) {
-      this.setImpl = s;
-    }
-    public static readonly Set<T> Empty = new Set<T>(new HashSet<T>());
-    public static Set<T> FromElements(params T[] values) {
-      return FromCollection(values);
-    }
-    public static Set<T> FromCollection(IEnumerable<T> values) {
-      var s = new HashSet<T>(values);
-      return new Set<T>(s);
-    }
-    public static Set<T> FromCollectionPlusOne(IEnumerable<T> values, T oneMoreValue) {
-      var s = new HashSet<T>(values);
-      s.Add(oneMoreValue);
-      return new Set<T>(s);
-    }
-    public int Count {
-      get { return this.setImpl.Count; }
-    }
-    public long LongCount {
-      get { return this.setImpl.Count; }
-    }
-    public IEnumerable<T> Elements {
-      get {
-        return this.setImpl;
-      }
-    }
-#endif
-
-    public static Set<T> _DafnyDefaultValue() {
-      return Empty;
-    }
 
     /// <summary>
     /// This is an inefficient iterator for producing all subsets of "this".
     /// </summary>
-    public IEnumerable<Set<T>> AllSubsets {
+    public IEnumerable<ISet<T>> AllSubsets {
       get {
         // Start by putting all set elements into a list, but don't include null
         var elmts = new List<T>();
         elmts.AddRange(this.setImpl);
         var n = elmts.Count;
         var which = new bool[n];
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
         var s = ImmutableHashSet<T>.Empty.ToBuilder();
-#else
-        var s = new HashSet<T>();
-#endif
         while (true) {
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
           // yield both the subset without null and, if null is in the original set, the subset with null included
           var ihs = s.ToImmutable();
           yield return new Set<T>(ihs, false);
           if (containsNull) {
             yield return new Set<T>(ihs, true);
           }
-#else
-          yield return new Set<T>(new HashSet<T>(s));
-#endif
           // "add 1" to "which", as if doing a carry chain.  For every digit changed, change the membership of the corresponding element in "s".
           int i = 0;
           for (; i < n && which[i]; i++) {
@@ -553,263 +547,251 @@ namespace Dafny
         }
       }
     }
-    public bool Equals(Set<T> other) {
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
-      return containsNull == other.containsNull && this.setImpl.SetEquals(other.setImpl);
-#else
-      return this.setImpl.Count == other.setImpl.Count && IsSubsetOf(other);
-#endif
+    public bool Equals(ISet<T> other) {
+      if (other == null || Count != other.Count) {
+        return false;
+      } else if (this == other) {
+        return true;
+      }
+      foreach (var elmt in Elements) {
+        if (!other.Contains(elmt)) {
+          return false;
+        }
+      }
+      return true;
     }
     public override bool Equals(object other) {
-      return other is Set<T> && Equals((Set<T>)other);
+      if (other is ISet<T>) {
+        return Equals((ISet<T>)other);
+      }
+      var th = this as ISet<object>;
+      var oth = other as ISet<object>;
+      if (th != null && oth != null) {
+        // We'd like to obtain the more specific type parameter U for oth's type ISet<U>.
+        // We do that by making a dynamically dispatched call, like:
+        //     oth.Equals(this)
+        // The hope is then that its comparison "this is ISet<U>" (that is, the first "if" test
+        // above, but in the call "oth.Equals(this)") will be true and the non-virtual Equals
+        // can be called. However, such a recursive call to "oth.Equals(this)" could turn
+        // into infinite recursion. Therefore, we instead call "oth.EqualsAux(this)", which
+        // performs the desired type test, but doesn't recurse any further.
+        return oth.EqualsAux(th);
+      } else {
+        return false;
+      }
     }
+
+    public bool EqualsAux(ISet<object> other) {
+      var s = other as ISet<T>;
+      if (s != null) {
+        return Equals(s);
+      } else {
+        return false;
+      }
+    }
+
     public override int GetHashCode() {
       var hashCode = 1;
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
       if (containsNull) {
         hashCode = hashCode * (Dafny.Helpers.GetHashCode(default(T)) + 3);
       }
-#endif
       foreach (var t in this.setImpl) {
-        hashCode = hashCode * (Dafny.Helpers.GetHashCode(t)+3);
+        hashCode = hashCode * (Dafny.Helpers.GetHashCode(t) + 3);
       }
       return hashCode;
     }
     public override string ToString() {
       var s = "{";
       var sep = "";
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
       if (containsNull) {
         s += sep + Dafny.Helpers.ToString(default(T));
         sep = ", ";
       }
-#endif
       foreach (var t in this.setImpl) {
         s += sep + Dafny.Helpers.ToString(t);
         sep = ", ";
       }
       return s + "}";
     }
-    public bool IsProperSubsetOf(Set<T> other) {
-      return this.Count < other.Count && IsSubsetOf(other);
+    public static bool IsProperSubsetOf(ISet<T> th, ISet<T> other) {
+      return th.Count < other.Count && IsSubsetOf(th, other);
     }
-    public bool IsSubsetOf(Set<T> other) {
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
-      if (this.containsNull && !other.containsNull) {
+    public static bool IsSubsetOf(ISet<T> th, ISet<T> other) {
+      if (other.Count < th.Count) {
         return false;
       }
-#endif
-      if (other.setImpl.Count < this.setImpl.Count)
-        return false;
-      foreach (T t in this.setImpl) {
-        if (!other.setImpl.Contains(t))
+      foreach (T t in th.Elements) {
+        if (!other.Contains(t)) {
           return false;
+        }
       }
       return true;
     }
-    public bool IsSupersetOf(Set<T> other) {
-      return other.IsSubsetOf(this);
-    }
-    public bool IsProperSupersetOf(Set<T> other) {
-      return other.IsProperSubsetOf(this);
-    }
-    public bool IsDisjointFrom(Set<T> other) {
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
-      if (this.containsNull && other.containsNull) {
-        return false;
-      }
-      ImmutableHashSet<T> a, b;
-#else
-      HashSet<T> a, b;
-#endif
-      if (this.setImpl.Count < other.setImpl.Count) {
-        a = this.setImpl; b = other.setImpl;
+    public static bool IsDisjointFrom(ISet<T> th, ISet<T> other) {
+      ISet<T> a, b;
+      if (th.Count < other.Count) {
+        a = th; b = other;
       } else {
-        a = other.setImpl; b = this.setImpl;
+        a = other; b = th;
       }
-      foreach (T t in a) {
-        if (b.Contains(t))
+      foreach (T t in a.Elements) {
+        if (b.Contains(t)) {
           return false;
+        }
       }
       return true;
     }
     public bool Contains<G>(G t) {
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
       return t == null ? containsNull : t is T && this.setImpl.Contains((T)(object)t);
-#else
-      return (t == null || t is T) && this.setImpl.Contains((T)(object)t);
-#endif
     }
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
-    public Set<T> Union(Set<T> other) {
-      return new Set<T>(this.setImpl.Union(other.setImpl), containsNull || other.containsNull);
+    public static ISet<T> Union(ISet<T> th, ISet<T> other) {
+      var a = FromISet(th);
+      var b = FromISet(other);
+      return new Set<T>(a.setImpl.Union(b.setImpl), a.containsNull || b.containsNull);
     }
-    public Set<T> Intersect(Set<T> other) {
-      return new Set<T>(this.setImpl.Intersect(other.setImpl), containsNull && other.containsNull);
+    public static ISet<T> Intersect(ISet<T> th, ISet<T> other) {
+      var a = FromISet(th);
+      var b = FromISet(other);
+      return new Set<T>(a.setImpl.Intersect(b.setImpl), a.containsNull && b.containsNull);
     }
-    public Set<T> Difference(Set<T> other) {
-        return new Set<T>(this.setImpl.Except(other.setImpl), containsNull && !other.containsNull);
+    public static ISet<T> Difference(ISet<T> th, ISet<T> other) {
+      var a = FromISet(th);
+      var b = FromISet(other);
+      return new Set<T>(a.setImpl.Except(b.setImpl), a.containsNull && !b.containsNull);
     }
-#else
-    public Set<T> Union(Set<T> other) {
-      if (this.setImpl.Count == 0)
-        return other;
-      else if (other.setImpl.Count == 0)
-        return this;
-      HashSet<T> a, b;
-      if (this.setImpl.Count < other.setImpl.Count) {
-        a = this.setImpl; b = other.setImpl;
-      } else {
-        a = other.setImpl; b = this.setImpl;
-      }
-      var r = new HashSet<T>();
-      foreach (T t in b)
-        r.Add(t);
-      foreach (T t in a)
-        r.Add(t);
-      return new Set<T>(r);
-    }
-    public Set<T> Intersect(Set<T> other) {
-      if (this.setImpl.Count == 0)
-        return this;
-      else if (other.setImpl.Count == 0)
-        return other;
-      HashSet<T> a, b;
-      if (this.setImpl.Count < other.setImpl.Count) {
-        a = this.setImpl; b = other.setImpl;
-      } else {
-        a = other.setImpl; b = this.setImpl;
-      }
-      var r = new HashSet<T>();
-      foreach (T t in a) {
-        if (b.Contains(t))
-          r.Add(t);
-      }
-      return new Set<T>(r);
-    }
-    public Set<T> Difference(Set<T> other) {
-      if (this.setImpl.Count == 0)
-        return this;
-      else if (other.setImpl.Count == 0)
-        return this;
-      var r = new HashSet<T>();
-      foreach (T t in this.setImpl) {
-        if (!other.setImpl.Contains(t))
-          r.Add(t);
-      }
-      return new Set<T>(r);
-    }
-#endif
   }
 
-  public class MultiSet<T>
+  public interface IMultiSet<out T>
   {
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
-    readonly ImmutableDictionary<T, int> dict;
-#else
-    readonly Dictionary<T, int> dict;
-#endif
+    bool IsEmpty { get; }
+    int Count { get; }
+    long LongCount { get; }
+    IEnumerable<T> Elements { get; }
+    IEnumerable<T> UniqueElements { get; }
+    bool Contains<G>(G t);
+    BigInteger Select<G>(G t);
+    IMultiSet<T> Update<G>(G t, BigInteger i);
+    bool EqualsAux(IMultiSet<object> other);
+    IMultiSet<U> DowncastClone<U>(Func<T, U> converter);
+  }
+
+  public class MultiSet<T> : IMultiSet<T>
+  {
+    readonly ImmutableDictionary<T, BigInteger> dict;
     readonly BigInteger occurrencesOfNull;  // stupidly, a Dictionary in .NET cannot use "null" as a key
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
-    MultiSet(ImmutableDictionary<T, int>.Builder d, BigInteger occurrencesOfNull) {
+    MultiSet(ImmutableDictionary<T, BigInteger>.Builder d, BigInteger occurrencesOfNull) {
       dict = d.ToImmutable();
       this.occurrencesOfNull = occurrencesOfNull;
     }
-    public static readonly MultiSet<T> Empty = new MultiSet<T>(ImmutableDictionary<T, int>.Empty.ToBuilder(), BigInteger.Zero);
-#else
-    MultiSet(Dictionary<T, int> d, BigInteger occurrencesOfNull) {
-      this.dict = d;
-      this.occurrencesOfNull = occurrencesOfNull;
+    public static readonly MultiSet<T> Empty = new MultiSet<T>(ImmutableDictionary<T, BigInteger>.Empty.ToBuilder(), BigInteger.Zero);
+
+    private static readonly TypeDescriptor<IMultiSet<T>> _TYPE = new Dafny.TypeDescriptor<IMultiSet<T>>(Empty);
+    public static TypeDescriptor<IMultiSet<T>> _TypeDescriptor() {
+      return _TYPE;
     }
-    public static MultiSet<T> Empty = new MultiSet<T>(new Dictionary<T, int>(0), BigInteger.Zero);
-#endif
+
+    public static MultiSet<T> FromIMultiSet(IMultiSet<T> s) {
+      return s as MultiSet<T> ?? FromCollection(s.Elements);
+    }
     public static MultiSet<T> FromElements(params T[] values) {
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
-      var d = ImmutableDictionary<T, int>.Empty.ToBuilder();
-#else
-      var d = new Dictionary<T, int>(values.Length);
-#endif
+      var d = ImmutableDictionary<T, BigInteger>.Empty.ToBuilder();
       var occurrencesOfNull = BigInteger.Zero;
       foreach (T t in values) {
         if (t == null) {
           occurrencesOfNull++;
         } else {
-          var i = 0;
+          BigInteger i;
           if (!d.TryGetValue(t, out i)) {
-            i = 0;
+            i = BigInteger.Zero;
           }
           d[t] = i + 1;
         }
       }
       return new MultiSet<T>(d, occurrencesOfNull);
     }
-    public static MultiSet<T> FromCollection(ICollection<T> values) {
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
-      var d = ImmutableDictionary<T, int>.Empty.ToBuilder();
-#else
-      var d = new Dictionary<T, int>();
-#endif
+    public static MultiSet<T> FromCollection(IEnumerable<T> values) {
+      var d = ImmutableDictionary<T, BigInteger>.Empty.ToBuilder();
       var occurrencesOfNull = BigInteger.Zero;
       foreach (T t in values) {
         if (t == null) {
           occurrencesOfNull++;
         } else {
-          var i = 0;
+          BigInteger i;
           if (!d.TryGetValue(t, out i)) {
-            i = 0;
+            i = BigInteger.Zero;
           }
           d[t] = i + 1;
         }
       }
       return new MultiSet<T>(d, occurrencesOfNull);
     }
-    public static MultiSet<T> FromSeq(Sequence<T> values) {
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
-      var d = ImmutableDictionary<T, int>.Empty.ToBuilder();
-#else
-      var d = new Dictionary<T, int>();
-#endif
+    public static MultiSet<T> FromSeq(ISequence<T> values) {
+      var d = ImmutableDictionary<T, BigInteger>.Empty.ToBuilder();
       var occurrencesOfNull = BigInteger.Zero;
       foreach (T t in values.Elements) {
         if (t == null) {
           occurrencesOfNull++;
         } else {
-          var i = 0;
+          BigInteger i;
           if (!d.TryGetValue(t, out i)) {
-            i = 0;
+            i = BigInteger.Zero;
           }
           d[t] = i + 1;
         }
       }
       return new MultiSet<T>(d, occurrencesOfNull);
     }
-    public static MultiSet<T> FromSet(Set<T> values) {
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
-      var d = ImmutableDictionary<T, int>.Empty.ToBuilder();
-#else
-      var d = new Dictionary<T, int>();
-#endif
+    public static MultiSet<T> FromSet(ISet<T> values) {
+      var d = ImmutableDictionary<T, BigInteger>.Empty.ToBuilder();
       var containsNull = false;
       foreach (T t in values.Elements) {
         if (t == null) {
           containsNull = true;
         } else {
-          d[t] = 1;
+          d[t] = BigInteger.One;
         }
       }
       return new MultiSet<T>(d, containsNull ? BigInteger.One : BigInteger.Zero);
     }
-
-    public static MultiSet<T> _DafnyDefaultValue() {
-      return Empty;
+    public IMultiSet<U> DowncastClone<U>(Func<T, U> converter) {
+      if (this is IMultiSet<U> th) {
+        return th;
+      } else {
+        var d = ImmutableDictionary<U, BigInteger>.Empty.ToBuilder();
+        foreach (var item in this.dict) {
+          var k = converter(item.Key);
+          d.Add(k, item.Value);
+        }
+        return new MultiSet<U>(d, this.occurrencesOfNull);
+      }
     }
 
-    public bool Equals(MultiSet<T> other) {
-      return other.IsSubsetOf(this) && this.IsSubsetOf(other);
+    public bool Equals(IMultiSet<T> other) {
+      return IsSubsetOf(this, other) && IsSubsetOf(other, this);
     }
     public override bool Equals(object other) {
-      return other is MultiSet<T> && Equals((MultiSet<T>)other);
+      if (other is IMultiSet<T>) {
+        return Equals((IMultiSet<T>)other);
+      }
+      var th = this as IMultiSet<object>;
+      var oth = other as IMultiSet<object>;
+      if (th != null && oth != null) {
+        // See comment in Set.Equals
+        return oth.EqualsAux(th);
+      } else {
+        return false;
+      }
     }
+
+    public bool EqualsAux(IMultiSet<object> other) {
+      var s = other as IMultiSet<T>;
+      if (s != null) {
+        return Equals(s);
+      } else {
+        return false;
+      }
+    }
+
     public override int GetHashCode() {
       var hashCode = 1;
       if (occurrencesOfNull > 0) {
@@ -833,43 +815,34 @@ namespace Dafny
       }
       foreach (var kv in dict) {
         var t = Dafny.Helpers.ToString(kv.Key);
-        for (int i = 0; i < kv.Value; i++) {
+        for (var i = BigInteger.Zero; i < kv.Value; i++) {
           s += sep + t;
           sep = ", ";
         }
       }
       return s + "}";
     }
-    public bool IsProperSubsetOf(MultiSet<T> other) {
-      return !Equals(other) && IsSubsetOf(other);
+    public static bool IsProperSubsetOf(IMultiSet<T> th, IMultiSet<T> other) {
+      return th.Count < other.Count && IsSubsetOf(th, other);
     }
-    public bool IsSubsetOf(MultiSet<T> other) {
-      if (other.occurrencesOfNull < this.occurrencesOfNull) {
+    public static bool IsSubsetOf(IMultiSet<T> th, IMultiSet<T> other) {
+      var a = FromIMultiSet(th);
+      var b = FromIMultiSet(other);
+      if (b.occurrencesOfNull < a.occurrencesOfNull) {
         return false;
       }
-      foreach (T t in dict.Keys) {
-        if (!other.dict.ContainsKey(t) || other.dict[t] < dict[t])
+      foreach (T t in a.dict.Keys) {
+        if (!b.dict.ContainsKey(t) || b.dict[t] < a.dict[t]) {
           return false;
+        }
       }
       return true;
     }
-    public bool IsSupersetOf(MultiSet<T> other) {
-      return other.IsSubsetOf(this);
-    }
-    public bool IsProperSupersetOf(MultiSet<T> other) {
-      return other.IsProperSubsetOf(this);
-    }
-    public bool IsDisjointFrom(MultiSet<T> other) {
-      if (occurrencesOfNull > 0 && other.occurrencesOfNull > 0) {
-        return false;
-      }
-      foreach (T t in dict.Keys) {
-        if (other.dict.ContainsKey(t))
+    public static bool IsDisjointFrom(IMultiSet<T> th, IMultiSet<T> other) {
+      foreach (T t in th.UniqueElements) {
+        if (other.Contains(t)) {
           return false;
-      }
-      foreach (T t in other.dict.Keys) {
-        if (dict.ContainsKey(t))
-          return false;
+        }
       }
       return true;
     }
@@ -880,94 +853,85 @@ namespace Dafny
     public BigInteger Select<G>(G t) {
       if (t == null) {
         return occurrencesOfNull;
-      } else if (t is T && dict.ContainsKey((T)(object)t)) {
-        return dict[(T)(object)t];
+      }
+      BigInteger m;
+      if (t is T && dict.TryGetValue((T)(object)t, out m)) {
+        return m;
       } else {
         return BigInteger.Zero;
       }
     }
-    public MultiSet<T> Update<G>(G t, BigInteger i) {
+    public IMultiSet<T> Update<G>(G t, BigInteger i) {
       if (Select(t) == i) {
         return this;
       } else if (t == null) {
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
         var r = dict.ToBuilder();
-#else
-        var r = dict;
-#endif
         return new MultiSet<T>(r, i);
       } else {
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
         var r = dict.ToBuilder();
-#else
-        var r = new Dictionary<T, int>(dict);
-#endif
-        r[(T)(object)t] = (int)i;
+        r[(T)(object)t] = i;
         return new MultiSet<T>(r, occurrencesOfNull);
       }
     }
-    public MultiSet<T> Union(MultiSet<T> other) {
-      if (dict.Count + occurrencesOfNull == 0)
+    public static IMultiSet<T> Union(IMultiSet<T> th, IMultiSet<T> other) {
+      if (th.IsEmpty) {
         return other;
-      else if (other.dict.Count + other.occurrencesOfNull == 0)
-        return this;
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
-      var r = ImmutableDictionary<T, int>.Empty.ToBuilder();
-#else
-      var r = new Dictionary<T, int>();
-#endif
-      foreach (T t in dict.Keys) {
-        var i = 0;
-        if (!r.TryGetValue(t, out i)) {
-          i = 0;
-        }
-        r[t] = i + dict[t];
+      } else if (other.IsEmpty) {
+        return th;
       }
-      foreach (T t in other.dict.Keys) {
-        var i = 0;
+      var a = FromIMultiSet(th);
+      var b = FromIMultiSet(other);
+      var r = ImmutableDictionary<T, BigInteger>.Empty.ToBuilder();
+      foreach (T t in a.dict.Keys) {
+        BigInteger i;
         if (!r.TryGetValue(t, out i)) {
-          i = 0;
+          i = BigInteger.Zero;
         }
-        r[t] = i + other.dict[t];
+        r[t] = i + a.dict[t];
       }
-      return new MultiSet<T>(r, occurrencesOfNull + other.occurrencesOfNull);
+      foreach (T t in b.dict.Keys) {
+        BigInteger i;
+        if (!r.TryGetValue(t, out i)) {
+          i = BigInteger.Zero;
+        }
+        r[t] = i + b.dict[t];
+      }
+      return new MultiSet<T>(r, a.occurrencesOfNull + b.occurrencesOfNull);
     }
-    public MultiSet<T> Intersect(MultiSet<T> other) {
-      if (dict.Count == 0 && occurrencesOfNull == 0)
-        return this;
-      else if (other.dict.Count == 0 && other.occurrencesOfNull == 0)
+    public static IMultiSet<T> Intersect(IMultiSet<T> th, IMultiSet<T> other) {
+      if (th.IsEmpty) {
+        return th;
+      } else if (other.IsEmpty) {
         return other;
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
-      var r = ImmutableDictionary<T, int>.Empty.ToBuilder();
-#else
-      var r = new Dictionary<T, int>();
-#endif
-      foreach (T t in dict.Keys) {
-        if (other.dict.ContainsKey(t)) {
-          r.Add(t, other.dict[t] < dict[t] ? other.dict[t] : dict[t]);
+      }
+      var a = FromIMultiSet(th);
+      var b = FromIMultiSet(other);
+      var r = ImmutableDictionary<T, BigInteger>.Empty.ToBuilder();
+      foreach (T t in a.dict.Keys) {
+        if (b.dict.ContainsKey(t)) {
+          r.Add(t, a.dict[t] < b.dict[t] ? a.dict[t] : b.dict[t]);
         }
       }
-      return new MultiSet<T>(r, other.occurrencesOfNull < occurrencesOfNull ? other.occurrencesOfNull : occurrencesOfNull);
+      return new MultiSet<T>(r, a.occurrencesOfNull < b.occurrencesOfNull ? a.occurrencesOfNull : b.occurrencesOfNull);
     }
-    public MultiSet<T> Difference(MultiSet<T> other) { // \result == this - other
-      if (dict.Count == 0 && occurrencesOfNull == 0)
-        return this;
-      else if (other.dict.Count == 0 && other.occurrencesOfNull == 0)
-        return this;
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
-      var r = ImmutableDictionary<T, int>.Empty.ToBuilder();
-#else
-      var r = new Dictionary<T, int>();
-#endif
-      foreach (T t in dict.Keys) {
-        if (!other.dict.ContainsKey(t)) {
-          r.Add(t, dict[t]);
-        } else if (other.dict[t] < dict[t]) {
-          r.Add(t, dict[t] - other.dict[t]);
+    public static IMultiSet<T> Difference(IMultiSet<T> th, IMultiSet<T> other) { // \result == this - other
+      if (other.IsEmpty) {
+        return th;
+      }
+      var a = FromIMultiSet(th);
+      var b = FromIMultiSet(other);
+      var r = ImmutableDictionary<T, BigInteger>.Empty.ToBuilder();
+      foreach (T t in a.dict.Keys) {
+        if (!b.dict.ContainsKey(t)) {
+          r.Add(t, a.dict[t]);
+        } else if (b.dict[t] < a.dict[t]) {
+          r.Add(t, a.dict[t] - b.dict[t]);
         }
       }
-      return new MultiSet<T>(r, other.occurrencesOfNull < occurrencesOfNull ? occurrencesOfNull - other.occurrencesOfNull : BigInteger.Zero);
+      return new MultiSet<T>(r, b.occurrencesOfNull < a.occurrencesOfNull ? a.occurrencesOfNull - b.occurrencesOfNull : BigInteger.Zero);
     }
+
+    public bool IsEmpty { get { return occurrencesOfNull == 0 && dict.IsEmpty; } }
 
     public int Count {
       get { return (int)ElementCount(); }
@@ -990,7 +954,7 @@ namespace Dafny
           yield return default(T);
         }
         foreach (var item in dict) {
-          for (int i = 0; i < item.Value; i++) {
+          for (var i = BigInteger.Zero; i < item.Value; i++) {
             yield return item.Key;
           }
         }
@@ -1002,109 +966,157 @@ namespace Dafny
         if (!occurrencesOfNull.IsZero) {
           yield return default(T);
         }
-        foreach (var item in dict) {
-          yield return item.Key;
+        foreach (var key in dict.Keys) {
+          yield return key;
         }
       }
     }
   }
 
-  public class Map<U, V>
+  public interface IMap<out U, out V>
   {
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
-    readonly ImmutableDictionary<U, V> dict;
-#else
-    readonly Dictionary<U, V> dict;
-#endif
-    readonly bool hasNullValue;  // true when "null" is a key of the Map
-    readonly V nullValue;  // if "hasNullValue", the value that "null" maps to
+    int Count { get; }
+    long LongCount { get; }
+    ISet<U> Keys { get; }
+    ISet<V> Values { get; }
+    IEnumerable<IPair<U, V>> ItemEnumerable { get; }
+    bool Contains<G>(G t);
+    /// <summary>
+    /// Returns "true" iff "this is IMap<object, object>" and "this" equals "other".
+    /// </summary>
+    bool EqualsObjObj(IMap<object, object> other);
+    IMap<UU, VV> DowncastClone<UU, VV>(Func<U, UU> keyConverter, Func<V, VV> valueConverter);
+  }
 
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
-    Map(ImmutableDictionary<U, V>.Builder d, bool hasNullValue, V nullValue) {
+  public class Map<U, V> : IMap<U, V>
+  {
+    readonly ImmutableDictionary<U, V> dict;
+    readonly bool hasNullKey;  // true when "null" is a key of the Map
+    readonly V nullValue;  // if "hasNullKey", the value that "null" maps to
+
+    private Map(ImmutableDictionary<U, V>.Builder d, bool hasNullKey, V nullValue) {
       dict = d.ToImmutable();
-      this.hasNullValue = hasNullValue;
+      this.hasNullKey = hasNullKey;
       this.nullValue = nullValue;
     }
     public static readonly Map<U, V> Empty = new Map<U, V>(ImmutableDictionary<U, V>.Empty.ToBuilder(), false, default(V));
-#else
-    Map(Dictionary<U, V> d, bool hasNullValue, V nullValue) {
-      this.dict = d;
-      this.hasNullValue = hasNullValue;
+
+    private Map(ImmutableDictionary<U, V> d, bool hasNullKey, V nullValue) {
+      dict = d;
+      this.hasNullKey = hasNullKey;
       this.nullValue = nullValue;
     }
-    public static readonly Map<U, V> Empty = new Map<U, V>(new Dictionary<U, V>(), false, default(V));
-#endif
 
-    public static Map<U, V> FromElements(params Pair<U, V>[] values) {
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
-      var d = ImmutableDictionary<U, V>.Empty.ToBuilder();
-#else
-      var d = new Dictionary<U, V>(values.Length);
-#endif
-      var hasNullValue = false;
-      var nullValue = default(V);
-      foreach (Pair<U, V> p in values) {
-        if (p.Car == null) {
-          hasNullValue = true;
-          nullValue = p.Cdr;
-        } else {
-          d[p.Car] = p.Cdr;
-        }
-      }
-      return new Map<U, V>(d, hasNullValue, nullValue);
+    private static readonly TypeDescriptor<IMap<U, V>> _TYPE = new Dafny.TypeDescriptor<IMap<U, V>>(Empty);
+    public static TypeDescriptor<IMap<U, V>> _TypeDescriptor() {
+      return _TYPE;
     }
-    public static Map<U, V> FromCollection(List<Pair<U, V>> values) {
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
+
+    public static Map<U, V> FromElements(params IPair<U, V>[] values) {
       var d = ImmutableDictionary<U, V>.Empty.ToBuilder();
-#else
-      var d = new Dictionary<U, V>(values.Count);
-#endif
-      var hasNullValue = false;
+      var hasNullKey = false;
       var nullValue = default(V);
-      foreach (Pair<U, V> p in values) {
+      foreach (var p in values) {
         if (p.Car == null) {
-          hasNullValue = true;
+          hasNullKey = true;
           nullValue = p.Cdr;
         } else {
           d[p.Car] = p.Cdr;
         }
       }
-      return new Map<U, V>(d, hasNullValue, nullValue);
+      return new Map<U, V>(d, hasNullKey, nullValue);
+    }
+    public static Map<U, V> FromCollection(IEnumerable<IPair<U, V>> values) {
+      var d = ImmutableDictionary<U, V>.Empty.ToBuilder();
+      var hasNullKey = false;
+      var nullValue = default(V);
+      foreach (var p in values) {
+        if (p.Car == null) {
+          hasNullKey = true;
+          nullValue = p.Cdr;
+        } else {
+          d[p.Car] = p.Cdr;
+        }
+      }
+      return new Map<U, V>(d, hasNullKey, nullValue);
+    }
+    public static Map<U, V> FromIMap(IMap<U, V> m) {
+      return m as Map<U, V> ?? FromCollection(m.ItemEnumerable);
+    }
+    public IMap<UU, VV> DowncastClone<UU, VV>(Func<U, UU> keyConverter, Func<V, VV> valueConverter) {
+      if (this is IMap<UU, VV> th) {
+        return th;
+      } else {
+        var d = ImmutableDictionary<UU, VV>.Empty.ToBuilder();
+        foreach (var item in this.dict) {
+          var k = keyConverter(item.Key);
+          var v = valueConverter(item.Value);
+          d.Add(k, v);
+        }
+        return new Map<UU, VV>(d, this.hasNullKey, (VV)(object)this.nullValue);
+      }
     }
     public int Count {
-      get { return dict.Count + (hasNullValue ? 1 : 0); }
+      get { return dict.Count + (hasNullKey ? 1 : 0); }
     }
     public long LongCount {
-      get { return dict.Count + (hasNullValue ? 1 : 0); }
-    }
-    public static Map<U, V> _DafnyDefaultValue() {
-      return Empty;
+      get { return dict.Count + (hasNullKey ? 1 : 0); }
     }
 
-    public bool Equals(Map<U, V> other) {
-      if (hasNullValue != other.hasNullValue || dict.Count != other.dict.Count) {
+    public bool Equals(IMap<U, V> other) {
+      if (other == null || LongCount != other.LongCount) {
         return false;
-      } else if (hasNullValue && !Dafny.Helpers.AreEqual(nullValue, other.nullValue)) {
-        return false;
+      } else if (this == other) {
+        return true;
       }
-      foreach (U u in dict.Keys) {
-        V v1 = dict[u];
-        V v2;
-        if (!other.dict.TryGetValue(u, out v2)) {
-          return false; // other dictionary does not contain this element
+      if (hasNullKey) {
+        if (!other.Contains(default(U)) || !object.Equals(nullValue, Select(other, default(U)))) {
+          return false;
         }
-        if (!Dafny.Helpers.AreEqual(v1, v2)) {
+      }
+      foreach (var item in dict) {
+        if (!other.Contains(item.Key) || !object.Equals(item.Value, Select(other, item.Key))) {
+          return false;
+        }
+      }
+      return true;
+    }
+    public bool EqualsObjObj(IMap<object, object> other) {
+      if (!(this is IMap<object, object>) || other == null || LongCount != other.LongCount) {
+        return false;
+      } else if (this == other) {
+        return true;
+      }
+      var oth = Map<object, object>.FromIMap(other);
+      if (hasNullKey) {
+        if (!oth.Contains(default(U)) || !object.Equals(nullValue, Map<object, object>.Select(oth, default(U)))) {
+          return false;
+        }
+      }
+      foreach (var item in dict) {
+        if (!other.Contains(item.Key) || !object.Equals(item.Value, Map<object, object>.Select(oth, item.Key))) {
           return false;
         }
       }
       return true;
     }
     public override bool Equals(object other) {
-      return other is Map<U, V> && Equals((Map<U, V>)other);
+      // See comment in Set.Equals
+      var m = other as IMap<U, V>;
+      if (m != null) {
+        return Equals(m);
+      }
+      var imapoo = other as IMap<object, object>;
+      if (imapoo != null) {
+        return EqualsObjObj(imapoo);
+      } else {
+        return false;
+      }
     }
+
     public override int GetHashCode() {
       var hashCode = 1;
-      if (hasNullValue) {
+      if (hasNullKey) {
         var key = Dafny.Helpers.GetHashCode(default(U));
         key = (key << 3) | (key >> 29) ^ Dafny.Helpers.GetHashCode(nullValue);
         hashCode = hashCode * (key + 3);
@@ -1119,7 +1131,7 @@ namespace Dafny
     public override string ToString() {
       var s = "map[";
       var sep = "";
-      if (hasNullValue) {
+      if (hasNullKey) {
         s += sep + Dafny.Helpers.ToString(default(U)) + " := " + Dafny.Helpers.ToString(nullValue);
         sep = ", ";
       }
@@ -1129,152 +1141,248 @@ namespace Dafny
       }
       return s + "]";
     }
-    public bool IsDisjointFrom(Map<U, V> other) {
-      if (hasNullValue && other.hasNullValue) {
-        return false;
-      }
-      foreach (U u in dict.Keys) {
-        if (other.dict.ContainsKey(u))
-          return false;
-      }
-      foreach (U u in other.dict.Keys) {
-        if (dict.ContainsKey(u))
-          return false;
-      }
-      return true;
-    }
     public bool Contains<G>(G u) {
-      return u == null ? hasNullValue : u is U && dict.ContainsKey((U)(object)u);
+      return u == null ? hasNullKey : u is U && dict.ContainsKey((U)(object)u);
     }
-    public V Select(U index) {
-      // evidently, the following will throw some exception if "index" in not a key of the map
-      return index == null && hasNullValue ? nullValue : dict[index];
+    public static V Select(IMap<U, V> th, U index) {
+      // the following will throw an exception if "index" in not a key of the map
+      var m = FromIMap(th);
+      return index == null && m.hasNullKey ? m.nullValue : m.dict[index];
     }
-#if DAFNY_USE_SYSTEM_COLLECTIONS_IMMUTABLE
-    public Map<U, V> Update(U index, V val) {
-      var d = dict.ToBuilder();
+    public static IMap<U, V> Update(IMap<U, V> th, U index, V val) {
+      var m = FromIMap(th);
+      var d = m.dict.ToBuilder();
       if (index == null) {
         return new Map<U, V>(d, true, val);
       } else {
         d[index] = val;
-        return new Map<U, V>(d, hasNullValue, nullValue);
+        return new Map<U, V>(d, m.hasNullKey, m.nullValue);
       }
     }
-#else
-    public Map<U, V> Update(U index, V val) {
-      if (index == null) {
-        return new Map<U, V>(dict, true, val);
-      } else {
-        var d = new Dictionary<U, V>(dict);
-        d[index] = val;
-        return new Map<U, V>(d, hasNullValue, nullValue);
-      }
+
+    public static IMap<U, V> Merge(IMap<U, V> th, IMap<U, V> other) {
+      var a = FromIMap(th);
+      var b = FromIMap(other);
+      ImmutableDictionary<U, V> d = a.dict.SetItems(b.dict);
+      return new Map<U, V>(d, a.hasNullKey || b.hasNullKey, b.hasNullKey ? b.nullValue : a.nullValue);
     }
-#endif
-    public Set<U> Keys {
+
+    public static IMap<U, V> Subtract(IMap<U, V> th, ISet<U> keys) {
+      var a = FromIMap(th);
+      ImmutableDictionary<U, V> d = a.dict.RemoveRange(keys.Elements);
+      return new Map<U, V>(d, a.hasNullKey && !keys.Contains<object>(null), a.nullValue);
+    }
+
+    public ISet<U> Keys {
       get {
-        if (hasNullValue) {
+        if (hasNullKey) {
           return Dafny.Set<U>.FromCollectionPlusOne(dict.Keys, default(U));
         } else {
           return Dafny.Set<U>.FromCollection(dict.Keys);
         }
       }
     }
-    public Set<V> Values {
+    public ISet<V> Values {
       get {
-        if (hasNullValue) {
+        if (hasNullKey) {
           return Dafny.Set<V>.FromCollectionPlusOne(dict.Values, nullValue);
         } else {
           return Dafny.Set<V>.FromCollection(dict.Values);
         }
       }
     }
-    public Set<_System.Tuple2<U, V>> Items {
+
+    public IEnumerable<IPair<U, V>> ItemEnumerable {
       get {
-        HashSet<_System.Tuple2<U, V>> result = new HashSet<_System.Tuple2<U, V>>();
-        if (hasNullValue) {
-          result.Add(_System.Tuple2<U, V>.create(default(U), nullValue));
+        if (hasNullKey) {
+          yield return new Pair<U, V>(default(U), nullValue);
         }
         foreach (KeyValuePair<U, V> kvp in dict) {
-          result.Add(_System.Tuple2<U, V>.create(kvp.Key, kvp.Value));
+          yield return new Pair<U, V>(kvp.Key, kvp.Value);
         }
-        return Dafny.Set<_System.Tuple2<U, V>>.FromCollection(result);
       }
+    }
+
+    public static ISet<_System.Tuple2<U, V>> Items(IMap<U, V> m) {
+      var result = new HashSet<_System.Tuple2<U, V>>();
+      foreach (var item in m.ItemEnumerable) {
+        result.Add(_System.Tuple2<U, V>.create(item.Car, item.Cdr));
+      }
+      return Dafny.Set<_System.Tuple2<U, V>>.FromCollection(result);
     }
   }
 
-  public class Sequence<T>
+  public interface ISequence<out T> {
+    long LongCount { get; }
+    int Count { get; }
+    T[] Elements { get; }
+    IEnumerable<T> UniqueElements { get; }
+    T Select(ulong index);
+    T Select(long index);
+    T Select(uint index);
+    T Select(int index);
+    T Select(BigInteger index);
+    bool Contains<G>(G g);
+    ISequence<T> Take(long m);
+    ISequence<T> Take(ulong n);
+    ISequence<T> Take(BigInteger n);
+    ISequence<T> Drop(long m);
+    ISequence<T> Drop(ulong n);
+    ISequence<T> Drop(BigInteger n);
+    ISequence<T> Subsequence(long lo, long hi);
+    ISequence<T> Subsequence(long lo, ulong hi);
+    ISequence<T> Subsequence(long lo, BigInteger hi);
+    ISequence<T> Subsequence(ulong lo, long hi);
+    ISequence<T> Subsequence(ulong lo, ulong hi);
+    ISequence<T> Subsequence(ulong lo, BigInteger hi);
+    ISequence<T> Subsequence(BigInteger lo, long hi);
+    ISequence<T> Subsequence(BigInteger lo, ulong hi);
+    ISequence<T> Subsequence(BigInteger lo, BigInteger hi);
+    bool EqualsAux(ISequence<object> other);
+    ISequence<U> DowncastClone<U>(Func<T, U> converter);
+  }
+
+  public abstract class Sequence<T> : ISequence<T>
   {
-    readonly T[] elmts;
-    public Sequence(T[] ee) {
-      elmts = ee;
+    public static readonly ISequence<T> Empty = new ArraySequence<T>(new T[0]);
+
+    private static readonly TypeDescriptor<ISequence<T>> _TYPE = new Dafny.TypeDescriptor<ISequence<T>>(Empty);
+    public static TypeDescriptor<ISequence<T>> _TypeDescriptor() {
+      return _TYPE;
     }
-    public static Sequence<T> Empty {
-      get {
-        return new Sequence<T>(new T[0]);
+
+    public static ISequence<T> Create(BigInteger length, System.Func<BigInteger, T> init) {
+      var len = (int)length;
+      var values = new T[len];
+      for (int i = 0; i < len; i++) {
+        values[i] = init(new BigInteger(i));
+      }
+      return new ArraySequence<T>(values);
+    }
+    public static ISequence<T> FromArray(T[] values) {
+      return new ArraySequence<T>(values);
+    }
+    public static ISequence<T> FromElements(params T[] values) {
+      return new ArraySequence<T>(values);
+    }
+    public static ISequence<char> FromString(string s) {
+      return new ArraySequence<char>(s.ToCharArray());
+    }
+    public ISequence<U> DowncastClone<U>(Func<T, U> converter) {
+      if (this is ISequence<U> th) {
+        return th;
+      } else {
+        var values = new U[this.LongCount];
+        for (long i = 0; i < this.LongCount; i++) {
+          var val = converter(this.Select(i));
+          values[i] = val;
+        }
+        return new ArraySequence<U>(values);
       }
     }
-    public static Sequence<T> FromElements(params T[] values) {
-      return new Sequence<T>(values);
+    public static ISequence<T> Update(ISequence<T> sequence, long index, T t) {
+      T[] tmp = (T[])sequence.Elements.Clone();
+      tmp[index] = t;
+      return new ArraySequence<T>(tmp);
     }
-    public static Sequence<char> FromString(string s) {
-      return new Sequence<char>(s.ToCharArray());
+    public static ISequence<T> Update(ISequence<T> sequence, ulong index, T t) {
+      return Update(sequence, (long)index, t);
     }
-    public static Sequence<T> _DafnyDefaultValue() {
-      return Empty;
+    public static ISequence<T> Update(ISequence<T> sequence, BigInteger index, T t) {
+      return Update(sequence, (long)index, t);
     }
-    public int Count {
-      get { return elmts.Length; }
+    public static bool EqualUntil(ISequence<T> left, ISequence<T> right, int n) {
+      T[] leftElmts = left.Elements, rightElmts = right.Elements;
+      for (int i = 0; i < n; i++) {
+        if (!object.Equals(leftElmts[i], rightElmts[i]))
+          return false;
+      }
+      return true;
     }
+    public static bool IsPrefixOf(ISequence<T> left, ISequence<T> right) {
+      int n = left.Elements.Length;
+      return n <= right.Elements.Length && EqualUntil(left, right, n);
+    }
+    public static bool IsProperPrefixOf(ISequence<T> left, ISequence<T> right) {
+      int n = left.Elements.Length;
+      return n < right.Elements.Length && EqualUntil(left, right, n);
+    }
+    public static ISequence<T> Concat(ISequence<T> left, ISequence<T> right) {
+      if (left.Count == 0) {
+        return right;
+      }
+      if (right.Count == 0) {
+        return left;
+      }
+      return new ConcatSequence<T>(left, right);
+    }
+    // Make Count a public abstract instead of LongCount, since the "array size is limited to a total of 4 billion
+    // elements, and to a maximum index of 0X7FEFFFFF". Therefore, as a protection, limit this to int32.
+    // https://docs.microsoft.com/en-us/dotnet/api/system.array
+    public abstract int Count  { get; }
     public long LongCount {
-      get { return elmts.LongLength; }
+      get { return Count; }
     }
-    public T[] Elements {
-      get {
-        return elmts;
-      }
+    // ImmutableElements cannot be public in the interface since ImmutableArray<T> leads to a
+    // "covariant type T occurs in invariant position" error. There do not appear to be interfaces for ImmutableArray<T>
+    // that resolve this.
+    protected abstract ImmutableArray<T> ImmutableElements { get; }
+
+    public T[] Elements
+    {
+      get { return ImmutableElements.ToArray(); }
     }
     public IEnumerable<T> UniqueElements {
       get {
-        var st = Set<T>.FromElements(elmts);
+        var st = Set<T>.FromCollection(ImmutableElements);
         return st.Elements;
       }
     }
+
     public T Select(ulong index) {
-      return elmts[index];
+      return ImmutableElements[checked((int)index)];
     }
     public T Select(long index) {
-      return elmts[index];
+      return ImmutableElements[checked((int)index)];
     }
     public T Select(uint index) {
-      return elmts[index];
+      return ImmutableElements[checked((int)index)];
     }
     public T Select(int index) {
-      return elmts[index];
+      return ImmutableElements[index];
     }
     public T Select(BigInteger index) {
-      return elmts[(int)index];
+      return ImmutableElements[(int)index];
     }
-    public Sequence<T> Update(long index, T t) {
-      T[] a = (T[])elmts.Clone();
-      a[index] = t;
-      return new Sequence<T>(a);
-    }
-    public Sequence<T> Update(ulong index, T t) {
-      return Update((long)index, t);
-    }
-    public Sequence<T> Update(BigInteger index, T t) {
-      return Update((long)index, t);
-    }
-    public bool Equals(Sequence<T> other) {
-      int n = elmts.Length;
-      return n == other.elmts.Length && EqualUntil(other, n);
+    public bool Equals(ISequence<T> other) {
+      int n = ImmutableElements.Length;
+      return n == other.Elements.Length && EqualUntil(this, other, n);
     }
     public override bool Equals(object other) {
-      return other is Sequence<T> && Equals((Sequence<T>)other);
+      if (other is ISequence<T>) {
+        return Equals((ISequence<T>)other);
+      }
+      var th = this as ISequence<object>;
+      var oth = other as ISequence<object>;
+      if (th != null && oth != null) {
+        // see explanation in Set.Equals
+        return oth.EqualsAux(th);
+      } else {
+        return false;
+      }
+    }
+    public bool EqualsAux(ISequence<object> other) {
+      var s = other as ISequence<T>;
+      if (s != null) {
+        return Equals(s);
+      } else {
+        return false;
+      }
     }
     public override int GetHashCode() {
-      if (elmts == null || elmts.Length == 0)
+      ImmutableArray<T> elmts = ImmutableElements;
+      // https://devblogs.microsoft.com/dotnet/please-welcome-immutablearrayt/
+      if (elmts.IsDefaultOrEmpty)
         return 0;
       var hashCode = 0;
       for (var i = 0; i < elmts.Length; i++) {
@@ -1283,7 +1391,10 @@ namespace Dafny
       return hashCode;
     }
     public override string ToString() {
-      if (elmts is char[]) {
+      // This is required because (ImmutableElements is ImmutableArray<char>) is not a valid type check
+      var typeCheckTmp = new T[0];
+      ImmutableArray<T> elmts = ImmutableElements;
+      if (typeCheckTmp is char[]) {
         var s = "";
         foreach (var t in elmts) {
           s += t.ToString();
@@ -1299,87 +1410,211 @@ namespace Dafny
         return s + "]";
       }
     }
-    bool EqualUntil(Sequence<T> other, int n) {
-      for (int i = 0; i < n; i++) {
-        if (!Dafny.Helpers.AreEqual(elmts[i], other.elmts[i]))
-          return false;
-      }
-      return true;
-    }
-    public bool IsProperPrefixOf(Sequence<T> other) {
-      int n = elmts.Length;
-      return n < other.elmts.Length && EqualUntil(other, n);
-    }
-    public bool IsPrefixOf(Sequence<T> other) {
-      int n = elmts.Length;
-      return n <= other.elmts.Length && EqualUntil(other, n);
-    }
-    public Sequence<T> Concat(Sequence<T> other) {
-      if (elmts.Length == 0)
-        return other;
-      else if (other.elmts.Length == 0)
-        return this;
-      T[] a = new T[elmts.Length + other.elmts.Length];
-      System.Array.Copy(elmts, 0, a, 0, elmts.Length);
-      System.Array.Copy(other.elmts, 0, a, elmts.Length, other.elmts.Length);
-      return new Sequence<T>(a);
-    }
     public bool Contains<G>(G g) {
       if (g == null || g is T) {
         var t = (T)(object)g;
-        int n = elmts.Length;
-        for (int i = 0; i < n; i++) {
-          if (Dafny.Helpers.AreEqual(t, elmts[i]))
-            return true;
-        }
+        return ImmutableElements.Contains(t);
       }
       return false;
     }
-    public Sequence<T> Take(long m) {
-      if (elmts.LongLength == m)
+    public ISequence<T> Take(long m) {
+      if (ImmutableElements.Length == m)
         return this;
-      T[] a = new T[m];
-      System.Array.Copy(elmts, a, m);
-      return new Sequence<T>(a);
+      int length = checked((int)m);
+      T[] tmp = new T[length];
+      ImmutableElements.CopyTo(0, tmp, 0, length);
+      return new ArraySequence<T>(tmp);
     }
-    public Sequence<T> Take(ulong n) {
+    public ISequence<T> Take(ulong n) {
       return Take((long)n);
     }
-    public Sequence<T> Take(BigInteger n) {
+    public ISequence<T> Take(BigInteger n) {
       return Take((long)n);
     }
-    public Sequence<T> Drop(long m) {
-      if (m == 0)
+    public ISequence<T> Drop(long m)
+    {
+      int startingElement = checked((int)m);
+      if (startingElement == 0)
         return this;
-      T[] a = new T[elmts.Length - m];
-      System.Array.Copy(elmts, m, a, 0, elmts.Length - m);
-      return new Sequence<T>(a);
+      int length = ImmutableElements.Length - startingElement;
+      T[] tmp = new T[length];
+      ImmutableElements.CopyTo(startingElement, tmp, 0, length);
+      return new ArraySequence<T>(tmp);
     }
-    public Sequence<T> Drop(ulong n) {
+    public ISequence<T> Drop(ulong n) {
       return Drop((long)n);
     }
-    public Sequence<T> Drop(BigInteger n) {
+    public ISequence<T> Drop(BigInteger n) {
       if (n.IsZero)
         return this;
       return Drop((long)n);
     }
+    public ISequence<T> Subsequence(long lo, long hi) {
+      if (lo == 0 && hi == ImmutableElements.Length) {
+        return this;
+      }
+      int startingIndex = checked((int) lo);
+      int endingIndex = checked((int)hi);
+      var length = endingIndex - startingIndex;
+      T[] tmp = new T[length];
+      ImmutableElements.CopyTo(startingIndex, tmp, 0, length);
+      return new ArraySequence<T>(tmp);
+    }
+    public ISequence<T> Subsequence(long lo, ulong hi) {
+      return Subsequence(lo, (long)hi);
+    }
+    public ISequence<T> Subsequence(long lo, BigInteger hi) {
+      return Subsequence(lo, (long)hi);
+    }
+    public ISequence<T> Subsequence(ulong lo, long hi) {
+      return Subsequence((long)lo, hi);
+    }
+    public ISequence<T> Subsequence(ulong lo, ulong hi) {
+      return Subsequence((long)lo, (long)hi);
+    }
+    public ISequence<T> Subsequence(ulong lo, BigInteger hi) {
+      return Subsequence((long)lo, (long)hi);
+    }
+    public ISequence<T> Subsequence(BigInteger lo, long hi) {
+      return Subsequence((long)lo, hi);
+    }
+    public ISequence<T> Subsequence(BigInteger lo, ulong hi) {
+      return Subsequence((long)lo, (long)hi);
+    }
+    public ISequence<T> Subsequence(BigInteger lo, BigInteger hi) {
+      return Subsequence((long)lo, (long)hi);
+    }
   }
-  public struct Pair<A, B>
+  internal class ArraySequence<T> : Sequence<T> {
+    private readonly ImmutableArray<T> elmts;
+
+    internal ArraySequence(ImmutableArray<T> ee) {
+      elmts = ee;
+    }
+    internal ArraySequence(T[] ee) {
+      elmts = ImmutableArray.Create<T>(ee);
+    }
+
+    protected override ImmutableArray<T> ImmutableElements {
+      get
+      {
+        return elmts;
+      }
+    }
+    public override int Count {
+      get {
+        return elmts.Length;
+      }
+    }
+  }
+  internal class ConcatSequence<T> : Sequence<T> {
+    // INVARIANT: Either left != null, right != null, and elmts's underlying array == null or
+    // left == null, right == null, and elmts's underlying array != null
+    private ISequence<T> left, right;
+    private ImmutableArray<T> elmts;
+    private readonly int count;
+
+    internal ConcatSequence(ISequence<T> left, ISequence<T> right) {
+      this.left = left;
+      this.right = right;
+      this.count = left.Count + right.Count;
+    }
+
+    protected override ImmutableArray<T> ImmutableElements {
+      get {
+        // IsDefault returns true if the underlying array is a null reference
+        // https://devblogs.microsoft.com/dotnet/please-welcome-immutablearrayt/
+        if (elmts.IsDefault) {
+          elmts = ComputeElements();
+          // We don't need the original sequences anymore; let them be
+          // garbage-collected
+          left = null;
+          right = null;
+        }
+        return elmts;
+      }
+    }
+
+    public override int Count {
+      get {
+        return count;
+      }
+    }
+
+    private ImmutableArray<T> ComputeElements() {
+      // Traverse the tree formed by all descendants which are ConcatSequences
+      var ansBuilder = ImmutableArray.CreateBuilder<T>();
+      var toVisit = new Stack<ISequence<T>>();
+      toVisit.Push(right);
+      toVisit.Push(left);
+
+      while (toVisit.Count != 0) {
+        var seq = toVisit.Pop();
+        var cs = seq as ConcatSequence<T>;
+        if (cs != null && cs.elmts.IsDefault) {
+          toVisit.Push(cs.right);
+          toVisit.Push(cs.left);
+        } else {
+          var array = seq.Elements;
+          ansBuilder.AddRange(array);
+        }
+      }
+      return ansBuilder.ToImmutable();
+    }
+  }
+
+  public interface IPair<out A, out B>
   {
-    public readonly A Car;
-    public readonly B Cdr;
+    A Car { get; }
+    B Cdr { get; }
+  }
+  public class Pair<A, B> : IPair<A, B>
+  {
+    private A car;
+    private B cdr;
+    public A Car { get { return car; } }
+    public B Cdr { get { return cdr; } }
     public Pair(A a, B b) {
-      this.Car = a;
-      this.Cdr = b;
+      this.car = a;
+      this.cdr = b;
     }
   }
-  public partial class Helpers {
-    public static bool AreEqual<G>(G a, G b) {
-      return a == null ? b == null : a.Equals(b);
+
+  public class TypeDescriptor<T>
+  {
+    private readonly T initValue;
+    public TypeDescriptor(T initValue) {
+      this.initValue = initValue;
     }
+    public T Default() {
+      return initValue;
+    }
+  }
+
+  public partial class Helpers
+  {
     public static int GetHashCode<G>(G g) {
       return g == null ? 1001 : g.GetHashCode();
     }
+
+    public static int ToIntChecked(BigInteger i, string msg) {
+      if (i > Int32.MaxValue || i < Int32.MinValue) {
+        if (msg == null) msg = "value out of range for a 32-bit int";
+        throw new HaltException(msg + ": " + i);
+      }
+      return (int)i;
+    }
+    public static int ToIntChecked(long i, string msg) {
+      if (i > Int32.MaxValue || i < Int32.MinValue) {
+        if (msg == null) msg = "value out of range for a 32-bit int";
+        throw new HaltException(msg + ": " + i);
+      }
+      return (int)i;
+    }
+    public static int ToIntChecked(int i, string msg) {
+      return i;
+    }
+
     public static string ToString<G>(G g) {
       if (g == null) {
         return "null";
@@ -1392,17 +1627,24 @@ namespace Dafny
     public static void Print<G>(G g) {
       System.Console.Write(ToString(g));
     }
-    public static G Default<G>() {
-      System.Type ty = typeof(G);
-      System.Reflection.MethodInfo mInfo = ty.GetMethod("_DafnyDefaultValue");
-      if (mInfo != null) {
-        G g = (G)mInfo.Invoke(null, null);
-        return g;
-      } else {
-        return default(G);
-      }
+
+    public static readonly TypeDescriptor<bool> BOOL = new TypeDescriptor<bool>(false);
+    public static readonly TypeDescriptor<char> CHAR = new TypeDescriptor<char>('D');  // See CharType.DefaultValue in Dafny source code
+    public static readonly TypeDescriptor<BigInteger> INT = new TypeDescriptor<BigInteger>(BigInteger.Zero);
+    public static readonly TypeDescriptor<BigRational> REAL = new TypeDescriptor<BigRational>(BigRational.ZERO);
+    public static readonly TypeDescriptor<byte> UINT8 = new TypeDescriptor<byte>(0);
+    public static readonly TypeDescriptor<ushort> UINT16 = new TypeDescriptor<ushort>(0);
+    public static readonly TypeDescriptor<uint> UINT32 = new TypeDescriptor<uint>(0);
+    public static readonly TypeDescriptor<ulong> UINT64 = new TypeDescriptor<ulong>(0);
+
+    public static TypeDescriptor<T> NULL<T>() where T : class {
+      return new TypeDescriptor<T>(null);
     }
-    // Computing forall/exists quantifiers
+
+    public static TypeDescriptor<A[]> ARRAY<A>() {
+      return new TypeDescriptor<A[]>(new A[0]);
+    }
+
     public static bool Quantifier<T>(IEnumerable<T> vals, bool frall, System.Predicate<T> pred) {
       foreach (var u in vals) {
         if (pred(u) != frall) { return !frall; }
@@ -1557,10 +1799,15 @@ namespace Dafny
         return c.IsZero ? c : BigInteger.Subtract(bp, c);
       }
     }
-    public static Sequence<T> SeqFromArray<T>(T[] array) {
-      return new Sequence<T>((T[])array.Clone());
+
+    public static U CastConverter<T, U>(T t) {
+      return (U)(object)t;
     }
-    // In .NET version 4.5, it it possible to mark a method with "AggressiveInlining", which says to inline the
+
+    public static Sequence<T> SeqFromArray<T>(T[] array) {
+      return new ArraySequence<T>((T[])array.Clone());
+    }
+    // In .NET version 4.5, it is possible to mark a method with "AggressiveInlining", which says to inline the
     // method if possible.  Method "ExpressionSequence" would be a good candidate for it:
     // [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     public static U ExpressionSequence<T, U>(T t, U u)
@@ -1574,6 +1821,14 @@ namespace Dafny
 
     public static A Id<A>(A a) {
       return a;
+    }
+
+    public static void WithHaltHandling(Action action) {
+      try {
+        action();
+      } catch (HaltException e) {
+        Console.WriteLine("[Program halted] " + e.Message);
+      }
     }
   }
 
@@ -1695,6 +1950,11 @@ namespace Dafny
       Normalize(this, that, out aa, out bb, out dd);
       return aa.CompareTo(bb);
     }
+    public int Sign {
+      get {
+        return num.Sign;
+      }
+    }
     public override int GetHashCode() {
       return num.GetHashCode() + 29 * den.GetHashCode();
     }
@@ -1751,6 +2011,12 @@ namespace Dafny
       return a * bReciprocal;
     }
   }
+
+  public class HaltException : Exception {
+    public HaltException(object message) : base(message.ToString())
+    {
+    }
+  }
 }
 
 namespace @_System
@@ -1763,8 +2029,8 @@ namespace @_System
       this._1 = _1;
     }
     public override bool Equals(object other) {
-      var oth = other as _System.@Tuple2<T0,T1>;
-      return oth != null && Dafny.Helpers.AreEqual(this._0, oth._0) && Dafny.Helpers.AreEqual(this._1, oth._1);
+      var oth = other as _System.Tuple2<T0,T1>;
+      return oth != null && object.Equals(this._0, oth._0) && object.Equals(this._1, oth._1);
     }
     public override int GetHashCode() {
       ulong hash = 5381;
@@ -1782,20 +2048,16 @@ namespace @_System
       s += ")";
       return s;
     }
-    static Tuple2<T0,T1> theDefault;
-    public static Tuple2<T0,T1> Default {
-      get {
-        if (theDefault == null) {
-          theDefault = new _System.@Tuple2<T0,T1>(Dafny.Helpers.Default<T0>(), Dafny.Helpers.Default<T1>());
-        }
-        return theDefault;
-      }
+    public static Tuple2<T0,T1> Default(T0 _default_T0, T1 _default_T1) {
+      return create(_default_T0, _default_T1);
     }
-    public static Tuple2<T0,T1> _DafnyDefaultValue() { return Default; }
+    public static Dafny.TypeDescriptor<_System.Tuple2<T0, T1>> _TypeDescriptor(Dafny.TypeDescriptor<T0> _td_T0, Dafny.TypeDescriptor<T1> _td_T1) {
+      return new Dafny.TypeDescriptor<_System.Tuple2<T0, T1>>(_System.Tuple2<T0, T1>.Default(_td_T0.Default(), _td_T1.Default()));
+    }
     public static Tuple2<T0,T1> create(T0 _0, T1 _1) {
       return new Tuple2<T0,T1>(_0, _1);
     }
-    public bool is____hMake3 { get { return true; } }
+    public bool is____hMake2 { get { return true; } }
     public T0 dtor__0 {
       get {
         return this._0;
@@ -1814,8 +2076,9 @@ namespace Dafny {
     public static T[] InitNewArray1<T>(T z, BigInteger size0) {
       int s0 = (int)size0;
       T[] a = new T[s0];
-      for (int i0 = 0; i0 < s0; i0++)
+      for (int i0 = 0; i0 < s0; i0++) {
         a[i0] = z;
+      }
       return a;
     }
   }
@@ -1824,6 +2087,10 @@ namespace _System {
 
 
   public partial class nat {
+    private static readonly Dafny.TypeDescriptor<BigInteger> _TYPE = new Dafny.TypeDescriptor<BigInteger>(BigInteger.Zero);
+    public static Dafny.TypeDescriptor<BigInteger> _TypeDescriptor() {
+      return _TYPE;
+    }
   }
 
 
@@ -1848,20 +2115,17 @@ namespace _System {
     public override string ToString() {
       return "()";
     }
-    static Tuple0 theDefault;
-    public static Tuple0 Default {
-      get {
-        if (theDefault == null) {
-          theDefault = new _System.Tuple0();
-        }
-        return theDefault;
-      }
+    private static readonly Tuple0 theDefault = create();
+    public static Tuple0 Default() {
+      return theDefault;
     }
-    public static Tuple0 _DafnyDefaultValue() { return Default; }
+    private static readonly Dafny.TypeDescriptor<_System.Tuple0> _TYPE = new Dafny.TypeDescriptor<_System.Tuple0>(_System.Tuple0.Default());
+    public static Dafny.TypeDescriptor<_System.Tuple0> _TypeDescriptor() {
+      return _TYPE;
+    }
     public static Tuple0 create() {
       return new Tuple0();
     }
-    public bool is____hMake0 { get { return true; } }
     public static System.Collections.Generic.IEnumerable<Tuple0> AllSingletonConstructors {
       get {
         yield return Tuple0.create();
@@ -1873,16 +2137,14 @@ namespace _module {
 
   public abstract class BasicTerm {
     public BasicTerm() { }
-    static BasicTerm theDefault;
-    public static BasicTerm Default {
-      get {
-        if (theDefault == null) {
-          theDefault = new BasicTerm_Value(BigInteger.Zero);
-        }
-        return theDefault;
-      }
+    private static readonly BasicTerm theDefault = create_Value(BigInteger.Zero);
+    public static BasicTerm Default() {
+      return theDefault;
     }
-    public static BasicTerm _DafnyDefaultValue() { return Default; }
+    private static readonly Dafny.TypeDescriptor<BasicTerm> _TYPE = new Dafny.TypeDescriptor<BasicTerm>(BasicTerm.Default());
+    public static Dafny.TypeDescriptor<BasicTerm> _TypeDescriptor() {
+      return _TYPE;
+    }
     public static BasicTerm create_Value(BigInteger val) {
       return new BasicTerm_Value(val);
     }
@@ -1953,32 +2215,23 @@ namespace _module {
 
   public abstract class StackElem {
     public StackElem() { }
-    static StackElem theDefault;
-    public static StackElem Default {
-      get {
-        if (theDefault == null) {
-          theDefault = new StackElem_Op(BigInteger.Zero, Dafny.Sequence<BasicTerm>.Empty);
-        }
-        return theDefault;
-      }
+    private static readonly StackElem theDefault = create_Op(Dafny.Sequence<BasicTerm>.Empty);
+    public static StackElem Default() {
+      return theDefault;
     }
-    public static StackElem _DafnyDefaultValue() { return Default; }
-    public static StackElem create_Op(BigInteger id, Dafny.Sequence<BasicTerm> input__stack) {
-      return new StackElem_Op(id, input__stack);
+    private static readonly Dafny.TypeDescriptor<StackElem> _TYPE = new Dafny.TypeDescriptor<StackElem>(StackElem.Default());
+    public static Dafny.TypeDescriptor<StackElem> _TypeDescriptor() {
+      return _TYPE;
     }
-    public static StackElem create_COp(BigInteger id, BasicTerm elem1, BasicTerm elem2) {
-      return new StackElem_COp(id, elem1, elem2);
+    public static StackElem create_Op(Dafny.ISequence<BasicTerm> input__stack) {
+      return new StackElem_Op(input__stack);
+    }
+    public static StackElem create_COp(BasicTerm elem1, BasicTerm elem2) {
+      return new StackElem_COp(elem1, elem2);
     }
     public bool is_Op { get { return this is StackElem_Op; } }
     public bool is_COp { get { return this is StackElem_COp; } }
-    public BigInteger dtor_id {
-      get {
-        var d = this;
-        if (d is StackElem_Op) { return ((StackElem_Op)d).id; }
-        return ((StackElem_COp)d).id; 
-      }
-    }
-    public Dafny.Sequence<BasicTerm> dtor_input__stack {
+    public Dafny.ISequence<BasicTerm> dtor_input__stack {
       get {
         var d = this;
         return ((StackElem_Op)d).input__stack; 
@@ -1998,50 +2251,42 @@ namespace _module {
     }
   }
   public class StackElem_Op : StackElem {
-    public readonly BigInteger id;
-    public readonly Dafny.Sequence<BasicTerm> input__stack;
-    public StackElem_Op(BigInteger id, Dafny.Sequence<BasicTerm> input__stack) {
-      this.id = id;
+    public readonly Dafny.ISequence<BasicTerm> input__stack;
+    public StackElem_Op(Dafny.ISequence<BasicTerm> input__stack) {
       this.input__stack = input__stack;
     }
     public override bool Equals(object other) {
       var oth = other as StackElem_Op;
-      return oth != null && this.id == oth.id && Dafny.Helpers.AreEqual(this.input__stack, oth.input__stack);
+      return oth != null && object.Equals(this.input__stack, oth.input__stack);
     }
     public override int GetHashCode() {
       ulong hash = 5381;
       hash = ((hash << 5) + hash) + 0;
-      hash = ((hash << 5) + hash) + ((ulong)Dafny.Helpers.GetHashCode(this.id));
       hash = ((hash << 5) + hash) + ((ulong)Dafny.Helpers.GetHashCode(this.input__stack));
       return (int) hash;
     }
     public override string ToString() {
       string s = "StackElem.Op";
       s += "(";
-      s += Dafny.Helpers.ToString(this.id);
-      s += ", ";
       s += Dafny.Helpers.ToString(this.input__stack);
       s += ")";
       return s;
     }
   }
   public class StackElem_COp : StackElem {
-    public readonly BigInteger id;
     public readonly BasicTerm elem1;
     public readonly BasicTerm elem2;
-    public StackElem_COp(BigInteger id, BasicTerm elem1, BasicTerm elem2) {
-      this.id = id;
+    public StackElem_COp(BasicTerm elem1, BasicTerm elem2) {
       this.elem1 = elem1;
       this.elem2 = elem2;
     }
     public override bool Equals(object other) {
       var oth = other as StackElem_COp;
-      return oth != null && this.id == oth.id && Dafny.Helpers.AreEqual(this.elem1, oth.elem1) && Dafny.Helpers.AreEqual(this.elem2, oth.elem2);
+      return oth != null && object.Equals(this.elem1, oth.elem1) && object.Equals(this.elem2, oth.elem2);
     }
     public override int GetHashCode() {
       ulong hash = 5381;
       hash = ((hash << 5) + hash) + 1;
-      hash = ((hash << 5) + hash) + ((ulong)Dafny.Helpers.GetHashCode(this.id));
       hash = ((hash << 5) + hash) + ((ulong)Dafny.Helpers.GetHashCode(this.elem1));
       hash = ((hash << 5) + hash) + ((ulong)Dafny.Helpers.GetHashCode(this.elem2));
       return (int) hash;
@@ -2049,8 +2294,6 @@ namespace _module {
     public override string ToString() {
       string s = "StackElem.COp";
       s += "(";
-      s += Dafny.Helpers.ToString(this.id);
-      s += ", ";
       s += Dafny.Helpers.ToString(this.elem1);
       s += ", ";
       s += Dafny.Helpers.ToString(this.elem2);
@@ -2060,17 +2303,17 @@ namespace _module {
   }
 
   public class ASFS {
-    public readonly Dafny.Sequence<BasicTerm> input;
-    public readonly Dafny.Map<BigInteger,StackElem> dict;
-    public readonly Dafny.Sequence<BasicTerm> output;
-    public ASFS(Dafny.Sequence<BasicTerm> input, Dafny.Map<BigInteger,StackElem> dict, Dafny.Sequence<BasicTerm> output) {
+    public readonly Dafny.ISequence<BasicTerm> input;
+    public readonly Dafny.IMap<BigInteger,StackElem> dict;
+    public readonly Dafny.ISequence<BasicTerm> output;
+    public ASFS(Dafny.ISequence<BasicTerm> input, Dafny.IMap<BigInteger,StackElem> dict, Dafny.ISequence<BasicTerm> output) {
       this.input = input;
       this.dict = dict;
       this.output = output;
     }
     public override bool Equals(object other) {
       var oth = other as ASFS;
-      return oth != null && Dafny.Helpers.AreEqual(this.input, oth.input) && Dafny.Helpers.AreEqual(this.dict, oth.dict) && Dafny.Helpers.AreEqual(this.output, oth.output);
+      return oth != null && object.Equals(this.input, oth.input) && object.Equals(this.dict, oth.dict) && object.Equals(this.output, oth.output);
     }
     public override int GetHashCode() {
       ulong hash = 5381;
@@ -2091,31 +2334,29 @@ namespace _module {
       s += ")";
       return s;
     }
-    static ASFS theDefault;
-    public static ASFS Default {
-      get {
-        if (theDefault == null) {
-          theDefault = new ASFS(Dafny.Sequence<BasicTerm>.Empty, Dafny.Map<BigInteger,StackElem>.Empty, Dafny.Sequence<BasicTerm>.Empty);
-        }
-        return theDefault;
-      }
+    private static readonly ASFS theDefault = create(Dafny.Sequence<BasicTerm>.Empty, Dafny.Map<BigInteger, StackElem>.Empty, Dafny.Sequence<BasicTerm>.Empty);
+    public static ASFS Default() {
+      return theDefault;
     }
-    public static ASFS _DafnyDefaultValue() { return Default; }
-    public static ASFS create(Dafny.Sequence<BasicTerm> input, Dafny.Map<BigInteger,StackElem> dict, Dafny.Sequence<BasicTerm> output) {
+    private static readonly Dafny.TypeDescriptor<ASFS> _TYPE = new Dafny.TypeDescriptor<ASFS>(ASFS.Default());
+    public static Dafny.TypeDescriptor<ASFS> _TypeDescriptor() {
+      return _TYPE;
+    }
+    public static ASFS create(Dafny.ISequence<BasicTerm> input, Dafny.IMap<BigInteger,StackElem> dict, Dafny.ISequence<BasicTerm> output) {
       return new ASFS(input, dict, output);
     }
     public bool is_SFS { get { return true; } }
-    public Dafny.Sequence<BasicTerm> dtor_input {
+    public Dafny.ISequence<BasicTerm> dtor_input {
       get {
         return this.input;
       }
     }
-    public Dafny.Map<BigInteger,StackElem> dtor_dict {
+    public Dafny.IMap<BigInteger,StackElem> dtor_dict {
       get {
         return this.dict;
       }
     }
-    public Dafny.Sequence<BasicTerm> dtor_output {
+    public Dafny.ISequence<BasicTerm> dtor_output {
       get {
         return this.output;
       }
@@ -2125,404 +2366,547 @@ namespace _module {
   public partial class __default {
     public static BigInteger getId(BasicTerm el) {
       BasicTerm _source0 = el;
- {
-        BigInteger _767_x = ((BasicTerm_StackVar)_source0).id;
-        return _767_x;
+      {
+        BigInteger _3005___mcc_h1 = ((BasicTerm_StackVar)_source0).id;
+        BigInteger _3006_x = _3005___mcc_h1;
+        return _3006_x;
       }
     }
-    public static Dafny.Set<BigInteger> idsFromInput(Dafny.Sequence<BasicTerm> input) {
-      if ((input).Equals(Dafny.Sequence<BasicTerm>.FromElements())) {
-        return Dafny.Set<BigInteger>.FromElements();
-      } else  {
-        BasicTerm _source1 = (input).Select(new BigInteger(0));
+    public static Dafny.ISet<BigInteger> idsFromInput(Dafny.ISequence<BasicTerm> input) {
+      Dafny.ISet<BigInteger> _3007___accumulator = Dafny.Set<BigInteger>.FromElements();
+    TAIL_CALL_START: ;
+      if ((input).Equals((Dafny.Sequence<BasicTerm>.FromElements()))) {
+        return Dafny.Set<BigInteger>.Union(Dafny.Set<BigInteger>.FromElements(), _3007___accumulator);
+      } else {
+        BasicTerm _source1 = (input).Select(BigInteger.Zero);
         if (_source1.is_Value) {
-          BigInteger _768_val = ((BasicTerm_Value)_source1).val;
-          return __default.idsFromInput((input).Drop(new BigInteger(1)));
-        } else  {
-          BigInteger _769_id = ((BasicTerm_StackVar)_source1).id;
-          return (Dafny.Set<BigInteger>.FromElements(_769_id)).Union(__default.idsFromInput((input).Drop(new BigInteger(1))));
+          BigInteger _3008___mcc_h0 = ((BasicTerm_Value)_source1).val;
+          BigInteger _3009_val = _3008___mcc_h0;
+          Dafny.ISequence<BasicTerm> _in0 = (input).Drop(BigInteger.One);
+          input = _in0;
+          goto TAIL_CALL_START;
+        } else {
+          BigInteger _3010___mcc_h1 = ((BasicTerm_StackVar)_source1).id;
+          BigInteger _3011_id = _3010___mcc_h1;
+          _3007___accumulator = Dafny.Set<BigInteger>.Union(_3007___accumulator, Dafny.Set<BigInteger>.FromElements(_3011_id));
+          Dafny.ISequence<BasicTerm> _in1 = (input).Drop(BigInteger.One);
+          input = _in1;
+          goto TAIL_CALL_START;
         }
       }
     }
-    public static BigInteger atId(Dafny.Sequence<BasicTerm> input, BigInteger pos)
-    {
-      if ((pos) == (new BigInteger(0))) {
-        BasicTerm _source2 = (input).Select(new BigInteger(0));
- {
-          BigInteger _770_x = ((BasicTerm_StackVar)_source2).id;
-          return _770_x;
-        }
-      } else  {
-        return __default.atId(input, (pos) - (new BigInteger(1)));
-      }
-    }
-    public static BigInteger getPos(Dafny.Sequence<BasicTerm> input, BigInteger id)
-    {
-      BasicTerm _source3 = (input).Select(new BigInteger(0));
- {
-        BigInteger _771_x = ((BasicTerm_StackVar)_source3).id;
-        if ((_771_x) == (id)) {
-          return new BigInteger(0);
-        } else  {
-          return (new BigInteger(1)) + (__default.getPos((input).Drop(new BigInteger(1)), id));
-        }
-      }
-    }
-    public static void compareDictElems(Dafny.Sequence<BasicTerm> input1, Dafny.Sequence<BasicTerm> input2, Dafny.Map<BigInteger,StackElem> dict1, Dafny.Map<BigInteger,StackElem> dict2, BigInteger key1, BigInteger key2, Dafny.Set<BigInteger> prev__ids1, Dafny.Set<BigInteger> prev__ids2, out bool b)
-    {
-      b = false;
-      _System.Tuple2<StackElem,StackElem> _source4 = @_System.Tuple2<StackElem,StackElem>.create((dict1).Select(key1), (dict2).Select(key2));
- {
-        StackElem _772___ms_h0 = ((_System.Tuple2<StackElem,StackElem>)_source4)._0;
-        StackElem _773___ms_h1 = ((_System.Tuple2<StackElem,StackElem>)_source4)._1;
-        StackElem _source5 = _772___ms_h0;
-        if (_source5.is_Op) {
-          BigInteger _774_id1 = ((StackElem_Op)_source5).id;
-          Dafny.Sequence<BasicTerm> _775_l1 = ((StackElem_Op)_source5).input__stack;
-          StackElem _source6 = _773___ms_h1;
-          if (_source6.is_Op) {
-            BigInteger _776_id2 = ((StackElem_Op)_source6).id;
-            Dafny.Sequence<BasicTerm> _777_l2 = ((StackElem_Op)_source6).input__stack;
-            if ((new BigInteger((_775_l1).Count)) != (new BigInteger((_777_l2).Count))) {
-              b = false;
-              return;
-            } else {
-              BigInteger _778_i;
-              _778_i = new BigInteger(0);
-              while ((_778_i) < (new BigInteger((_775_l1).Count))) {
-                _System.Tuple2<BasicTerm,BasicTerm> _source7 = @_System.Tuple2<BasicTerm,BasicTerm>.create((_775_l1).Select(_778_i), (_777_l2).Select(_778_i));
- {
-                  BasicTerm _779___ms_h0 = ((_System.Tuple2<BasicTerm,BasicTerm>)_source7)._0;
-                  BasicTerm _780___ms_h1 = ((_System.Tuple2<BasicTerm,BasicTerm>)_source7)._1;
-                  BasicTerm _source8 = _779___ms_h0;
-                  if (_source8.is_Value) {
-                    BigInteger _781_x1 = ((BasicTerm_Value)_source8).val;
-                    BasicTerm _source9 = _780___ms_h1;
-                    if (_source9.is_Value) {
-                      BigInteger _782_x2 = ((BasicTerm_Value)_source9).val;
-                      if ((_781_x1) != (_782_x2)) {
-                        b = false;
-                        return;
-                      }
-                    } else  {
-                      BigInteger _783_x2 = ((BasicTerm_StackVar)_source9).id;
-                      b = false;
-                      return;
-                    }
-                  } else  {
-                    BigInteger _784_x1 = ((BasicTerm_StackVar)_source8).id;
-                    BasicTerm _source10 = _780___ms_h1;
-                    if (_source10.is_StackVar) {
-                      BigInteger _785_x2 = ((BasicTerm_StackVar)_source10).id;
-                      if (((__default.idsFromInput(input1)).Contains(_784_x1)) && ((__default.idsFromInput(input2)).Contains(_785_x2))) {
-                        if ((__default.getPos(input1, _784_x1)) != (__default.getPos(input2, _785_x2))) {
-                          b = false;
-                          return;
-                        }
-                      } else if (((dict1).Contains(_784_x1)) && ((dict2).Contains(_785_x2))) {
-                        bool _786_aux;
-                        bool _out0;
-                        __default.compareDictElems(input1, input2, dict1, dict2, _784_x1, _785_x2, (prev__ids1).Union(Dafny.Set<BigInteger>.FromElements(key1)), (prev__ids2).Union(Dafny.Set<BigInteger>.FromElements(key2)), out _out0);
-                        _786_aux = _out0;
-                        if (!(_786_aux)) {
-                          b = false;
-                          return;
-                        }
-                      } else {
-                        b = false;
-                        return;
-                      }
-                    } else  {
-                      BigInteger _787_x2 = ((BasicTerm_Value)_source10).val;
-                      b = false;
-                      return;
-                    }
-                  }
-                }
-                _778_i = (_778_i) + (new BigInteger(1));
-              }
-              b = true;
-              return;
-            }
-          } else  {
-            BigInteger _788_id2 = ((StackElem_COp)_source6).id;
-            BasicTerm _789_x2 = ((StackElem_COp)_source6).elem1;
-            BasicTerm _790_y2 = ((StackElem_COp)_source6).elem2;
-            b = false;
-            return;
-          }
-        } else  {
-          BigInteger _791_id1 = ((StackElem_COp)_source5).id;
-          BasicTerm _792___mc_h0 = ((StackElem_COp)_source5).elem1;
-          BasicTerm _793___mc_h1 = ((StackElem_COp)_source5).elem2;
-          StackElem _source11 = _773___ms_h1;
-          if (_source11.is_COp) {
-            BigInteger _794_id2 = ((StackElem_COp)_source11).id;
-            BasicTerm _795_el21 = ((StackElem_COp)_source11).elem1;
-            BasicTerm _796_el22 = ((StackElem_COp)_source11).elem2;
-            bool _797_b1;
-            _797_b1 = true;
-            _System.Tuple2<BasicTerm,BasicTerm> _source12 = @_System.Tuple2<BasicTerm,BasicTerm>.create(_792___mc_h0, _795_el21);
- {
-              BasicTerm _798___ms_h0 = ((_System.Tuple2<BasicTerm,BasicTerm>)_source12)._0;
-              BasicTerm _799___ms_h1 = ((_System.Tuple2<BasicTerm,BasicTerm>)_source12)._1;
-              BasicTerm _source13 = _798___ms_h0;
-              if (_source13.is_Value) {
-                BigInteger _800_x1 = ((BasicTerm_Value)_source13).val;
-                BasicTerm _source14 = _799___ms_h1;
-                if (_source14.is_Value) {
-                  BigInteger _801_x2 = ((BasicTerm_Value)_source14).val;
-                  _797_b1 = (_800_x1) == (_801_x2);
-                } else  {
-                  BigInteger _802_x2 = ((BasicTerm_StackVar)_source14).id;
-                  {
-                    _797_b1 = false;
-                  }
-                }
-              } else  {
-                BigInteger _803_x1 = ((BasicTerm_StackVar)_source13).id;
-                BasicTerm _source15 = _799___ms_h1;
-                if (_source15.is_StackVar) {
-                  BigInteger _804_x2 = ((BasicTerm_StackVar)_source15).id;
-                  if (((__default.idsFromInput(input1)).Contains(_803_x1)) && ((__default.idsFromInput(input2)).Contains(_804_x2))) {
-                    _797_b1 = (__default.getPos(input1, _803_x1)) == (__default.getPos(input2, _804_x2));
-                  } else if (((dict1).Contains(_803_x1)) && ((dict2).Contains(_804_x2))) {
-                    bool _out1;
-                    __default.compareDictElems(input1, input2, dict1, dict2, _803_x1, _804_x2, (prev__ids1).Union(Dafny.Set<BigInteger>.FromElements(key1)), (prev__ids2).Union(Dafny.Set<BigInteger>.FromElements(key2)), out _out1);
-                    _797_b1 = _out1;
-                  } else {
-                    _797_b1 = false;
-                  }
-                } else  {
-                  BigInteger _805_x2 = ((BasicTerm_Value)_source15).val;
-                  {
-                    _797_b1 = false;
-                  }
-                }
-              }
-            }
-            if (_797_b1) {
-              _System.Tuple2<BasicTerm,BasicTerm> _source16 = @_System.Tuple2<BasicTerm,BasicTerm>.create(_793___mc_h1, _796_el22);
- {
-                BasicTerm _806___ms_h0 = ((_System.Tuple2<BasicTerm,BasicTerm>)_source16)._0;
-                BasicTerm _807___ms_h1 = ((_System.Tuple2<BasicTerm,BasicTerm>)_source16)._1;
-                BasicTerm _source17 = _806___ms_h0;
-                if (_source17.is_Value) {
-                  BigInteger _808_x1 = ((BasicTerm_Value)_source17).val;
-                  BasicTerm _source18 = _807___ms_h1;
-                  if (_source18.is_Value) {
-                    BigInteger _809_x2 = ((BasicTerm_Value)_source18).val;
-                    _797_b1 = (_808_x1) == (_809_x2);
-                  } else  {
-                    BigInteger _810_x2 = ((BasicTerm_StackVar)_source18).id;
-                    {
-                      _797_b1 = false;
-                    }
-                  }
-                } else  {
-                  BigInteger _811_x1 = ((BasicTerm_StackVar)_source17).id;
-                  BasicTerm _source19 = _807___ms_h1;
-                  if (_source19.is_StackVar) {
-                    BigInteger _812_x2 = ((BasicTerm_StackVar)_source19).id;
-                    if (((__default.idsFromInput(input1)).Contains(_811_x1)) && ((__default.idsFromInput(input2)).Contains(_812_x2))) {
-                      _797_b1 = (__default.getPos(input1, _811_x1)) == (__default.getPos(input2, _812_x2));
-                    } else if (((dict1).Contains(_811_x1)) && ((dict2).Contains(_812_x2))) {
-                      bool _out2;
-                      __default.compareDictElems(input1, input2, dict1, dict2, _811_x1, _812_x2, (prev__ids1).Union(Dafny.Set<BigInteger>.FromElements(key1)), (prev__ids2).Union(Dafny.Set<BigInteger>.FromElements(key2)), out _out2);
-                      _797_b1 = _out2;
-                    } else {
-                      _797_b1 = false;
-                    }
-                  } else  {
-                    BigInteger _813_x2 = ((BasicTerm_Value)_source19).val;
-                    {
-                      _797_b1 = false;
-                    }
-                  }
-                }
-              }
-              if (_797_b1) {
-                b = true;
-                return;
-              }
-            }
-            _797_b1 = true;
-            _System.Tuple2<BasicTerm,BasicTerm> _source20 = @_System.Tuple2<BasicTerm,BasicTerm>.create(_793___mc_h1, _795_el21);
- {
-              BasicTerm _814___ms_h0 = ((_System.Tuple2<BasicTerm,BasicTerm>)_source20)._0;
-              BasicTerm _815___ms_h1 = ((_System.Tuple2<BasicTerm,BasicTerm>)_source20)._1;
-              BasicTerm _source21 = _814___ms_h0;
-              if (_source21.is_Value) {
-                BigInteger _816_x1 = ((BasicTerm_Value)_source21).val;
-                BasicTerm _source22 = _815___ms_h1;
-                if (_source22.is_Value) {
-                  BigInteger _817_x2 = ((BasicTerm_Value)_source22).val;
-                  _797_b1 = (_816_x1) == (_817_x2);
-                } else  {
-                  BigInteger _818_x2 = ((BasicTerm_StackVar)_source22).id;
-                  {
-                    _797_b1 = false;
-                  }
-                }
-              } else  {
-                BigInteger _819_x1 = ((BasicTerm_StackVar)_source21).id;
-                BasicTerm _source23 = _815___ms_h1;
-                if (_source23.is_StackVar) {
-                  BigInteger _820_x2 = ((BasicTerm_StackVar)_source23).id;
-                  if (((__default.idsFromInput(input1)).Contains(_819_x1)) && ((__default.idsFromInput(input2)).Contains(_820_x2))) {
-                    _797_b1 = (__default.getPos(input1, _819_x1)) == (__default.getPos(input2, _820_x2));
-                  } else if (((dict1).Contains(_819_x1)) && ((dict2).Contains(_820_x2))) {
-                    bool _out3;
-                    __default.compareDictElems(input1, input2, dict1, dict2, _819_x1, _820_x2, (prev__ids1).Union(Dafny.Set<BigInteger>.FromElements(key1)), (prev__ids2).Union(Dafny.Set<BigInteger>.FromElements(key2)), out _out3);
-                    _797_b1 = _out3;
-                  } else {
-                    _797_b1 = false;
-                  }
-                } else  {
-                  BigInteger _821_x2 = ((BasicTerm_Value)_source23).val;
-                  {
-                    _797_b1 = false;
-                  }
-                }
-              }
-            }
-            if (_797_b1) {
-              _System.Tuple2<BasicTerm,BasicTerm> _source24 = @_System.Tuple2<BasicTerm,BasicTerm>.create(_792___mc_h0, _796_el22);
- {
-                BasicTerm _822___ms_h0 = ((_System.Tuple2<BasicTerm,BasicTerm>)_source24)._0;
-                BasicTerm _823___ms_h1 = ((_System.Tuple2<BasicTerm,BasicTerm>)_source24)._1;
-                BasicTerm _source25 = _822___ms_h0;
-                if (_source25.is_Value) {
-                  BigInteger _824_x1 = ((BasicTerm_Value)_source25).val;
-                  BasicTerm _source26 = _823___ms_h1;
-                  if (_source26.is_Value) {
-                    BigInteger _825_x2 = ((BasicTerm_Value)_source26).val;
-                    _797_b1 = (_824_x1) == (_825_x2);
-                  } else  {
-                    BigInteger _826_x2 = ((BasicTerm_StackVar)_source26).id;
-                    {
-                      _797_b1 = false;
-                    }
-                  }
-                } else  {
-                  BigInteger _827_x1 = ((BasicTerm_StackVar)_source25).id;
-                  BasicTerm _source27 = _823___ms_h1;
-                  if (_source27.is_StackVar) {
-                    BigInteger _828_x2 = ((BasicTerm_StackVar)_source27).id;
-                    if (((__default.idsFromInput(input1)).Contains(_827_x1)) && ((__default.idsFromInput(input2)).Contains(_828_x2))) {
-                      _797_b1 = (__default.getPos(input1, _827_x1)) == (__default.getPos(input2, _828_x2));
-                    } else if (((dict1).Contains(_827_x1)) && ((dict2).Contains(_828_x2))) {
-                      bool _out4;
-                      __default.compareDictElems(input1, input2, dict1, dict2, _827_x1, _828_x2, (prev__ids1).Union(Dafny.Set<BigInteger>.FromElements(key1)), (prev__ids2).Union(Dafny.Set<BigInteger>.FromElements(key2)), out _out4);
-                      _797_b1 = _out4;
-                    } else {
-                      _797_b1 = false;
-                    }
-                  } else  {
-                    BigInteger _829_x2 = ((BasicTerm_Value)_source27).val;
-                    {
-                      _797_b1 = false;
-                    }
-                  }
-                }
-              }
-              b = _797_b1;
-              return;
-            } else {
-              b = false;
-              return;
-            }
-          } else  {
-            BigInteger _830_id2 = ((StackElem_Op)_source11).id;
-            Dafny.Sequence<BasicTerm> _831_l2 = ((StackElem_Op)_source11).input__stack;
-            b = false;
-            return;
-          }
-        }
-      }
-    }
-    public static void areEquivalentSFS(ASFS sfs1, ASFS sfs2, out bool b)
+    public static BigInteger atId(Dafny.ISequence<BasicTerm> input, BigInteger pos)
     {
     TAIL_CALL_START: ;
-      b = false;
-      _System.Tuple2<ASFS,ASFS> _source28 = @_System.Tuple2<ASFS,ASFS>.create(sfs1, sfs2);
- {
-        ASFS _832___ms_h0 = ((_System.Tuple2<ASFS,ASFS>)_source28)._0;
-        ASFS _833___ms_h1 = ((_System.Tuple2<ASFS,ASFS>)_source28)._1;
-        ASFS _source29 = _832___ms_h0;
- {
-          Dafny.Sequence<BasicTerm> _834_input1 = ((ASFS)_source29).input;
-          Dafny.Map<BigInteger,StackElem> _835_dict1 = ((ASFS)_source29).dict;
-          Dafny.Sequence<BasicTerm> _836_output1 = ((ASFS)_source29).output;
-          ASFS _source30 = _833___ms_h1;
- {
-            Dafny.Sequence<BasicTerm> _837_input2 = ((ASFS)_source30).input;
-            Dafny.Map<BigInteger,StackElem> _838_dict2 = ((ASFS)_source30).dict;
-            Dafny.Sequence<BasicTerm> _839_output2 = ((ASFS)_source30).output;
-            if (((new BigInteger((_834_input1).Count)) != (new BigInteger((_837_input2).Count))) || ((new BigInteger((_836_output1).Count)) != (new BigInteger((_839_output2).Count)))) {
-              b = false;
-              return;
-            } else {
-              BigInteger _840_i;
-              _840_i = new BigInteger(0);
-              while ((_840_i) < (new BigInteger((_836_output1).Count))) {
-                _System.Tuple2<BasicTerm,BasicTerm> _source31 = @_System.Tuple2<BasicTerm,BasicTerm>.create((_836_output1).Select(_840_i), (_839_output2).Select(_840_i));
- {
-                  BasicTerm _841___ms_h0 = ((_System.Tuple2<BasicTerm,BasicTerm>)_source31)._0;
-                  BasicTerm _842___ms_h1 = ((_System.Tuple2<BasicTerm,BasicTerm>)_source31)._1;
-                  BasicTerm _source32 = _841___ms_h0;
-                  if (_source32.is_Value) {
-                    BigInteger _843_x1 = ((BasicTerm_Value)_source32).val;
-                    BasicTerm _source33 = _842___ms_h1;
-                    if (_source33.is_Value) {
-                      BigInteger _844_x2 = ((BasicTerm_Value)_source33).val;
-                      if ((_843_x1) != (_844_x2)) {
-                        b = false;
-                        return;
-                      }
-                    } else  {
-                      BigInteger _845_x2 = ((BasicTerm_StackVar)_source33).id;
-                      b = false;
-                      return;
-                    }
-                  } else  {
-                    BigInteger _846_x1 = ((BasicTerm_StackVar)_source32).id;
-                    BasicTerm _source34 = _842___ms_h1;
-                    if (_source34.is_StackVar) {
-                      BigInteger _847_x2 = ((BasicTerm_StackVar)_source34).id;
-                      if (((__default.idsFromInput(_834_input1)).Contains(_846_x1)) && ((__default.idsFromInput(_837_input2)).Contains(_847_x2))) {
-                        if ((__default.getPos(_834_input1, _846_x1)) != (__default.getPos(_837_input2, _847_x2))) {
-                          b = false;
-                          return;
-                        }
-                      } else if (((_835_dict1).Contains(_846_x1)) && ((_838_dict2).Contains(_847_x2))) {
-                        bool _848_aux;
-                        bool _out5;
-                        __default.compareDictElems(_834_input1, _837_input2, _835_dict1, _838_dict2, _846_x1, _847_x2, Dafny.Set<BigInteger>.FromElements(), Dafny.Set<BigInteger>.FromElements(), out _out5);
-                        _848_aux = _out5;
-                        if (!(_848_aux)) {
-                          b = false;
-                          return;
+      if ((pos).Sign == 0) {
+        BasicTerm _source2 = (input).Select(BigInteger.Zero);
+        {
+          BigInteger _3012___mcc_h1 = ((BasicTerm_StackVar)_source2).id;
+          BigInteger _3013_x = _3012___mcc_h1;
+          return _3013_x;
+        }
+      } else {
+        Dafny.ISequence<BasicTerm> _in2 = input;
+        BigInteger _in3 = (pos) - (BigInteger.One);
+        input = _in2;
+        pos = _in3;
+        goto TAIL_CALL_START;
+      }
+    }
+    public static BigInteger getPos(Dafny.ISequence<BasicTerm> input, BigInteger id)
+    {
+      BigInteger _3014___accumulator = BigInteger.Zero;
+    TAIL_CALL_START: ;
+      BasicTerm _source3 = (input).Select(BigInteger.Zero);
+      {
+        BigInteger _3015___mcc_h3 = ((BasicTerm_StackVar)_source3).id;
+        BigInteger _3016_x = _3015___mcc_h3;
+        if ((_3016_x) == (id)) {
+          return (BigInteger.Zero) + (_3014___accumulator);
+        } else {
+          _3014___accumulator = (_3014___accumulator) + (BigInteger.One);
+          Dafny.ISequence<BasicTerm> _in4 = (input).Drop(BigInteger.One);
+          BigInteger _in5 = id;
+          input = _in4;
+          id = _in5;
+          goto TAIL_CALL_START;
+        }
+      }
+    }
+    public static bool compareDictElems(Dafny.ISequence<BasicTerm> input1, Dafny.ISequence<BasicTerm> input2, Dafny.IMap<BigInteger,StackElem> dict1, Dafny.IMap<BigInteger,StackElem> dict2, BigInteger key1, BigInteger key2, Dafny.ISet<BigInteger> prev__ids1, Dafny.ISet<BigInteger> prev__ids2)
+    {
+      bool b = false;
+      _System.Tuple2<StackElem, StackElem> _source4 = @_System.Tuple2<StackElem, StackElem>.create(Dafny.Map<BigInteger, StackElem>.Select(dict1,key1), Dafny.Map<BigInteger, StackElem>.Select(dict2,key2));
+      {
+        StackElem _3017___mcc_h0 = ((_System.Tuple2<StackElem, StackElem>)_source4)._0;
+        StackElem _3018___mcc_h1 = ((_System.Tuple2<StackElem, StackElem>)_source4)._1;
+        StackElem _source5 = _3017___mcc_h0;
+        if (_source5.is_Op) {
+          Dafny.ISequence<BasicTerm> _3019___mcc_h2 = ((StackElem_Op)_source5).input__stack;
+          StackElem _source6 = _3018___mcc_h1;
+          if (_source6.is_Op) {
+            Dafny.ISequence<BasicTerm> _3020___mcc_h3 = ((StackElem_Op)_source6).input__stack;
+            {
+              Dafny.ISequence<BasicTerm> _3021_l2 = _3020___mcc_h3;
+              Dafny.ISequence<BasicTerm> _3022_l1 = _3019___mcc_h2;
+              if ((new BigInteger((_3022_l1).Count)) != (new BigInteger((_3021_l2).Count))) {
+                b = false;
+                return b;
+              } else {
+                BigInteger _3023_i;
+                _3023_i = BigInteger.Zero;
+                while ((_3023_i) < (new BigInteger((_3022_l1).Count))) {
+                  _System.Tuple2<BasicTerm, BasicTerm> _source7 = @_System.Tuple2<BasicTerm, BasicTerm>.create((_3022_l1).Select(_3023_i), (_3021_l2).Select(_3023_i));
+                  {
+                    BasicTerm _3024___mcc_h19 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source7)._0;
+                    BasicTerm _3025___mcc_h20 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source7)._1;
+                    BasicTerm _source8 = _3024___mcc_h19;
+                    if (_source8.is_Value) {
+                      BigInteger _3026___mcc_h21 = ((BasicTerm_Value)_source8).val;
+                      BasicTerm _source9 = _3025___mcc_h20;
+                      if (_source9.is_Value) {
+                        BigInteger _3027___mcc_h22 = ((BasicTerm_Value)_source9).val;
+                        {
+                          BigInteger _3028_x2 = _3027___mcc_h22;
+                          BigInteger _3029_x1 = _3026___mcc_h21;
+                          if ((_3029_x1) != (_3028_x2)) {
+                            b = false;
+                            return b;
+                          }
                         }
                       } else {
-                        b = false;
-                        return;
+                        BigInteger _3030___mcc_h23 = ((BasicTerm_StackVar)_source9).id;
+                        {
+                          BigInteger _3031_x2 = _3030___mcc_h23;
+                          BigInteger _3032_x1 = _3026___mcc_h21;
+                          b = false;
+                          return b;
+                        }
                       }
-                    } else  {
-                      BigInteger _849_x2 = ((BasicTerm_Value)_source34).val;
-                      b = false;
-                      return;
+                    } else {
+                      BigInteger _3033___mcc_h24 = ((BasicTerm_StackVar)_source8).id;
+                      BasicTerm _source10 = _3025___mcc_h20;
+                      if (_source10.is_Value) {
+                        BigInteger _3034___mcc_h25 = ((BasicTerm_Value)_source10).val;
+                        {
+                          BigInteger _3035_x2 = _3034___mcc_h25;
+                          BigInteger _3036_x1 = _3033___mcc_h24;
+                          b = false;
+                          return b;
+                        }
+                      } else {
+                        BigInteger _3037___mcc_h26 = ((BasicTerm_StackVar)_source10).id;
+                        {
+                          BigInteger _3038_x2 = _3037___mcc_h26;
+                          BigInteger _3039_x1 = _3033___mcc_h24;
+                          if (((__default.idsFromInput(input1)).Contains((_3039_x1))) && ((__default.idsFromInput(input2)).Contains((_3038_x2)))) {
+                            if ((__default.getPos(input1, _3039_x1)) != (__default.getPos(input2, _3038_x2))) {
+                              b = false;
+                              return b;
+                            }
+                          } else if (((dict1).Contains((_3039_x1))) && ((dict2).Contains((_3038_x2)))) {
+                            bool _3040_aux;
+                            bool _out0;
+                            _out0 = __default.compareDictElems(input1, input2, dict1, dict2, _3039_x1, _3038_x2, Dafny.Set<BigInteger>.Union(prev__ids1, Dafny.Set<BigInteger>.FromElements(key1)), Dafny.Set<BigInteger>.Union(prev__ids2, Dafny.Set<BigInteger>.FromElements(key2)));
+                            _3040_aux = _out0;
+                            if (!(_3040_aux)) {
+                              b = false;
+                              return b;
+                            }
+                          } else {
+                            b = false;
+                            return b;
+                          }
+                        }
+                      }
+                    }
+                  }
+                  _3023_i = (_3023_i) + (BigInteger.One);
+                }
+                b = true;
+                return b;
+              }
+            }
+          } else {
+            BasicTerm _3041___mcc_h4 = ((StackElem_COp)_source6).elem1;
+            BasicTerm _3042___mcc_h5 = ((StackElem_COp)_source6).elem2;
+            {
+              BasicTerm _3043_y2 = _3042___mcc_h5;
+              BasicTerm _3044_x2 = _3041___mcc_h4;
+              Dafny.ISequence<BasicTerm> _3045_l1 = _3019___mcc_h2;
+              b = false;
+              return b;
+            }
+          }
+        } else {
+          BasicTerm _3046___mcc_h6 = ((StackElem_COp)_source5).elem1;
+          BasicTerm _3047___mcc_h7 = ((StackElem_COp)_source5).elem2;
+          StackElem _source11 = _3018___mcc_h1;
+          if (_source11.is_Op) {
+            Dafny.ISequence<BasicTerm> _3048___mcc_h8 = ((StackElem_Op)_source11).input__stack;
+            {
+              Dafny.ISequence<BasicTerm> _3049_l2 = _3048___mcc_h8;
+              BasicTerm _3050_y1 = _3047___mcc_h7;
+              BasicTerm _3051_x1 = _3046___mcc_h6;
+              b = false;
+              return b;
+            }
+          } else {
+            BasicTerm _3052___mcc_h9 = ((StackElem_COp)_source11).elem1;
+            BasicTerm _3053___mcc_h10 = ((StackElem_COp)_source11).elem2;
+            {
+              BasicTerm _3054_el22 = _3053___mcc_h10;
+              BasicTerm _3055_el21 = _3052___mcc_h9;
+              BasicTerm _3056_el12 = _3047___mcc_h7;
+              BasicTerm _3057_el11 = _3046___mcc_h6;
+              bool _3058_b1;
+              _3058_b1 = true;
+              _System.Tuple2<BasicTerm, BasicTerm> _source12 = @_System.Tuple2<BasicTerm, BasicTerm>.create(_3057_el11, _3055_el21);
+              {
+                BasicTerm _3059___mcc_h27 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source12)._0;
+                BasicTerm _3060___mcc_h28 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source12)._1;
+                BasicTerm _source13 = _3059___mcc_h27;
+                if (_source13.is_Value) {
+                  BigInteger _3061___mcc_h29 = ((BasicTerm_Value)_source13).val;
+                  BasicTerm _source14 = _3060___mcc_h28;
+                  if (_source14.is_Value) {
+                    BigInteger _3062___mcc_h30 = ((BasicTerm_Value)_source14).val;
+                    {
+                      BigInteger _3063_x2 = _3062___mcc_h30;
+                      BigInteger _3064_x1 = _3061___mcc_h29;
+                      _3058_b1 = (_3064_x1) == (_3063_x2);
+                    }
+                  } else {
+                    BigInteger _3065___mcc_h31 = ((BasicTerm_StackVar)_source14).id;
+                    {
+                      BigInteger _3066_x2 = _3065___mcc_h31;
+                      BigInteger _3067_x1 = _3061___mcc_h29;
+                      {
+                        _3058_b1 = false;
+                      }
+                    }
+                  }
+                } else {
+                  BigInteger _3068___mcc_h32 = ((BasicTerm_StackVar)_source13).id;
+                  BasicTerm _source15 = _3060___mcc_h28;
+                  if (_source15.is_Value) {
+                    BigInteger _3069___mcc_h33 = ((BasicTerm_Value)_source15).val;
+                    {
+                      BigInteger _3070_x2 = _3069___mcc_h33;
+                      BigInteger _3071_x1 = _3068___mcc_h32;
+                      {
+                        _3058_b1 = false;
+                      }
+                    }
+                  } else {
+                    BigInteger _3072___mcc_h34 = ((BasicTerm_StackVar)_source15).id;
+                    {
+                      BigInteger _3073_x2 = _3072___mcc_h34;
+                      BigInteger _3074_x1 = _3068___mcc_h32;
+                      if (((__default.idsFromInput(input1)).Contains((_3074_x1))) && ((__default.idsFromInput(input2)).Contains((_3073_x2)))) {
+                        _3058_b1 = (__default.getPos(input1, _3074_x1)) == (__default.getPos(input2, _3073_x2));
+                      } else if (((dict1).Contains((_3074_x1))) && ((dict2).Contains((_3073_x2)))) {
+                        bool _out1;
+                        _out1 = __default.compareDictElems(input1, input2, dict1, dict2, _3074_x1, _3073_x2, Dafny.Set<BigInteger>.Union(prev__ids1, Dafny.Set<BigInteger>.FromElements(key1)), Dafny.Set<BigInteger>.Union(prev__ids2, Dafny.Set<BigInteger>.FromElements(key2)));
+                        _3058_b1 = _out1;
+                      } else {
+                        _3058_b1 = false;
+                      }
                     }
                   }
                 }
-                _840_i = (_840_i) + (new BigInteger(1));
               }
-              b = true;
-              return;
+              if (_3058_b1) {
+                _System.Tuple2<BasicTerm, BasicTerm> _source16 = @_System.Tuple2<BasicTerm, BasicTerm>.create(_3056_el12, _3054_el22);
+                {
+                  BasicTerm _3075___mcc_h35 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source16)._0;
+                  BasicTerm _3076___mcc_h36 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source16)._1;
+                  BasicTerm _source17 = _3075___mcc_h35;
+                  if (_source17.is_Value) {
+                    BigInteger _3077___mcc_h37 = ((BasicTerm_Value)_source17).val;
+                    BasicTerm _source18 = _3076___mcc_h36;
+                    if (_source18.is_Value) {
+                      BigInteger _3078___mcc_h38 = ((BasicTerm_Value)_source18).val;
+                      {
+                        BigInteger _3079_x2 = _3078___mcc_h38;
+                        BigInteger _3080_x1 = _3077___mcc_h37;
+                        _3058_b1 = (_3080_x1) == (_3079_x2);
+                      }
+                    } else {
+                      BigInteger _3081___mcc_h39 = ((BasicTerm_StackVar)_source18).id;
+                      {
+                        BigInteger _3082_x2 = _3081___mcc_h39;
+                        BigInteger _3083_x1 = _3077___mcc_h37;
+                        {
+                          _3058_b1 = false;
+                        }
+                      }
+                    }
+                  } else {
+                    BigInteger _3084___mcc_h40 = ((BasicTerm_StackVar)_source17).id;
+                    BasicTerm _source19 = _3076___mcc_h36;
+                    if (_source19.is_Value) {
+                      BigInteger _3085___mcc_h41 = ((BasicTerm_Value)_source19).val;
+                      {
+                        BigInteger _3086_x2 = _3085___mcc_h41;
+                        BigInteger _3087_x1 = _3084___mcc_h40;
+                        {
+                          _3058_b1 = false;
+                        }
+                      }
+                    } else {
+                      BigInteger _3088___mcc_h42 = ((BasicTerm_StackVar)_source19).id;
+                      {
+                        BigInteger _3089_x2 = _3088___mcc_h42;
+                        BigInteger _3090_x1 = _3084___mcc_h40;
+                        if (((__default.idsFromInput(input1)).Contains((_3090_x1))) && ((__default.idsFromInput(input2)).Contains((_3089_x2)))) {
+                          _3058_b1 = (__default.getPos(input1, _3090_x1)) == (__default.getPos(input2, _3089_x2));
+                        } else if (((dict1).Contains((_3090_x1))) && ((dict2).Contains((_3089_x2)))) {
+                          bool _out2;
+                          _out2 = __default.compareDictElems(input1, input2, dict1, dict2, _3090_x1, _3089_x2, Dafny.Set<BigInteger>.Union(prev__ids1, Dafny.Set<BigInteger>.FromElements(key1)), Dafny.Set<BigInteger>.Union(prev__ids2, Dafny.Set<BigInteger>.FromElements(key2)));
+                          _3058_b1 = _out2;
+                        } else {
+                          _3058_b1 = false;
+                        }
+                      }
+                    }
+                  }
+                }
+                if (_3058_b1) {
+                  b = true;
+                  return b;
+                }
+              }
+              _3058_b1 = true;
+              _System.Tuple2<BasicTerm, BasicTerm> _source20 = @_System.Tuple2<BasicTerm, BasicTerm>.create(_3056_el12, _3055_el21);
+              {
+                BasicTerm _3091___mcc_h43 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source20)._0;
+                BasicTerm _3092___mcc_h44 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source20)._1;
+                BasicTerm _source21 = _3091___mcc_h43;
+                if (_source21.is_Value) {
+                  BigInteger _3093___mcc_h45 = ((BasicTerm_Value)_source21).val;
+                  BasicTerm _source22 = _3092___mcc_h44;
+                  if (_source22.is_Value) {
+                    BigInteger _3094___mcc_h46 = ((BasicTerm_Value)_source22).val;
+                    {
+                      BigInteger _3095_x2 = _3094___mcc_h46;
+                      BigInteger _3096_x1 = _3093___mcc_h45;
+                      _3058_b1 = (_3096_x1) == (_3095_x2);
+                    }
+                  } else {
+                    BigInteger _3097___mcc_h47 = ((BasicTerm_StackVar)_source22).id;
+                    {
+                      BigInteger _3098_x2 = _3097___mcc_h47;
+                      BigInteger _3099_x1 = _3093___mcc_h45;
+                      {
+                        _3058_b1 = false;
+                      }
+                    }
+                  }
+                } else {
+                  BigInteger _3100___mcc_h48 = ((BasicTerm_StackVar)_source21).id;
+                  BasicTerm _source23 = _3092___mcc_h44;
+                  if (_source23.is_Value) {
+                    BigInteger _3101___mcc_h49 = ((BasicTerm_Value)_source23).val;
+                    {
+                      BigInteger _3102_x2 = _3101___mcc_h49;
+                      BigInteger _3103_x1 = _3100___mcc_h48;
+                      {
+                        _3058_b1 = false;
+                      }
+                    }
+                  } else {
+                    BigInteger _3104___mcc_h50 = ((BasicTerm_StackVar)_source23).id;
+                    {
+                      BigInteger _3105_x2 = _3104___mcc_h50;
+                      BigInteger _3106_x1 = _3100___mcc_h48;
+                      if (((__default.idsFromInput(input1)).Contains((_3106_x1))) && ((__default.idsFromInput(input2)).Contains((_3105_x2)))) {
+                        _3058_b1 = (__default.getPos(input1, _3106_x1)) == (__default.getPos(input2, _3105_x2));
+                      } else if (((dict1).Contains((_3106_x1))) && ((dict2).Contains((_3105_x2)))) {
+                        bool _out3;
+                        _out3 = __default.compareDictElems(input1, input2, dict1, dict2, _3106_x1, _3105_x2, Dafny.Set<BigInteger>.Union(prev__ids1, Dafny.Set<BigInteger>.FromElements(key1)), Dafny.Set<BigInteger>.Union(prev__ids2, Dafny.Set<BigInteger>.FromElements(key2)));
+                        _3058_b1 = _out3;
+                      } else {
+                        _3058_b1 = false;
+                      }
+                    }
+                  }
+                }
+              }
+              if (_3058_b1) {
+                _System.Tuple2<BasicTerm, BasicTerm> _source24 = @_System.Tuple2<BasicTerm, BasicTerm>.create(_3057_el11, _3054_el22);
+                {
+                  BasicTerm _3107___mcc_h51 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source24)._0;
+                  BasicTerm _3108___mcc_h52 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source24)._1;
+                  BasicTerm _source25 = _3107___mcc_h51;
+                  if (_source25.is_Value) {
+                    BigInteger _3109___mcc_h53 = ((BasicTerm_Value)_source25).val;
+                    BasicTerm _source26 = _3108___mcc_h52;
+                    if (_source26.is_Value) {
+                      BigInteger _3110___mcc_h54 = ((BasicTerm_Value)_source26).val;
+                      {
+                        BigInteger _3111_x2 = _3110___mcc_h54;
+                        BigInteger _3112_x1 = _3109___mcc_h53;
+                        _3058_b1 = (_3112_x1) == (_3111_x2);
+                      }
+                    } else {
+                      BigInteger _3113___mcc_h55 = ((BasicTerm_StackVar)_source26).id;
+                      {
+                        BigInteger _3114_x2 = _3113___mcc_h55;
+                        BigInteger _3115_x1 = _3109___mcc_h53;
+                        {
+                          _3058_b1 = false;
+                        }
+                      }
+                    }
+                  } else {
+                    BigInteger _3116___mcc_h56 = ((BasicTerm_StackVar)_source25).id;
+                    BasicTerm _source27 = _3108___mcc_h52;
+                    if (_source27.is_Value) {
+                      BigInteger _3117___mcc_h57 = ((BasicTerm_Value)_source27).val;
+                      {
+                        BigInteger _3118_x2 = _3117___mcc_h57;
+                        BigInteger _3119_x1 = _3116___mcc_h56;
+                        {
+                          _3058_b1 = false;
+                        }
+                      }
+                    } else {
+                      BigInteger _3120___mcc_h58 = ((BasicTerm_StackVar)_source27).id;
+                      {
+                        BigInteger _3121_x2 = _3120___mcc_h58;
+                        BigInteger _3122_x1 = _3116___mcc_h56;
+                        if (((__default.idsFromInput(input1)).Contains((_3122_x1))) && ((__default.idsFromInput(input2)).Contains((_3121_x2)))) {
+                          _3058_b1 = (__default.getPos(input1, _3122_x1)) == (__default.getPos(input2, _3121_x2));
+                        } else if (((dict1).Contains((_3122_x1))) && ((dict2).Contains((_3121_x2)))) {
+                          bool _out4;
+                          _out4 = __default.compareDictElems(input1, input2, dict1, dict2, _3122_x1, _3121_x2, Dafny.Set<BigInteger>.Union(prev__ids1, Dafny.Set<BigInteger>.FromElements(key1)), Dafny.Set<BigInteger>.Union(prev__ids2, Dafny.Set<BigInteger>.FromElements(key2)));
+                          _3058_b1 = _out4;
+                        } else {
+                          _3058_b1 = false;
+                        }
+                      }
+                    }
+                  }
+                }
+                b = _3058_b1;
+                return b;
+              } else {
+                b = false;
+                return b;
+              }
             }
           }
         }
       }
+      return b;
+    }
+    public static bool areEquivalentSFS(ASFS sfs1, ASFS sfs2)
+    {
+      bool b = false;
+      _System.Tuple2<ASFS, ASFS> _source28 = @_System.Tuple2<ASFS, ASFS>.create(sfs1, sfs2);
+      {
+        ASFS _3123___mcc_h0 = ((_System.Tuple2<ASFS, ASFS>)_source28)._0;
+        ASFS _3124___mcc_h1 = ((_System.Tuple2<ASFS, ASFS>)_source28)._1;
+        ASFS _source29 = _3123___mcc_h0;
+        {
+          Dafny.ISequence<BasicTerm> _3125___mcc_h2 = ((ASFS)_source29).input;
+          Dafny.IMap<BigInteger,StackElem> _3126___mcc_h3 = ((ASFS)_source29).dict;
+          Dafny.ISequence<BasicTerm> _3127___mcc_h4 = ((ASFS)_source29).output;
+          ASFS _source30 = _3124___mcc_h1;
+          {
+            Dafny.ISequence<BasicTerm> _3128___mcc_h5 = ((ASFS)_source30).input;
+            Dafny.IMap<BigInteger,StackElem> _3129___mcc_h6 = ((ASFS)_source30).dict;
+            Dafny.ISequence<BasicTerm> _3130___mcc_h7 = ((ASFS)_source30).output;
+            {
+              Dafny.ISequence<BasicTerm> _3131_output2 = _3130___mcc_h7;
+              Dafny.IMap<BigInteger,StackElem> _3132_dict2 = _3129___mcc_h6;
+              Dafny.ISequence<BasicTerm> _3133_input2 = _3128___mcc_h5;
+              Dafny.ISequence<BasicTerm> _3134_output1 = _3127___mcc_h4;
+              Dafny.IMap<BigInteger,StackElem> _3135_dict1 = _3126___mcc_h3;
+              Dafny.ISequence<BasicTerm> _3136_input1 = _3125___mcc_h2;
+              if (((new BigInteger((_3136_input1).Count)) != (new BigInteger((_3133_input2).Count))) || ((new BigInteger((_3134_output1).Count)) != (new BigInteger((_3131_output2).Count)))) {
+                b = false;
+                return b;
+              } else {
+                BigInteger _3137_i;
+                _3137_i = BigInteger.Zero;
+                while ((_3137_i) < (new BigInteger((_3134_output1).Count))) {
+                  _System.Tuple2<BasicTerm, BasicTerm> _source31 = @_System.Tuple2<BasicTerm, BasicTerm>.create((_3134_output1).Select(_3137_i), (_3131_output2).Select(_3137_i));
+                  {
+                    BasicTerm _3138___mcc_h16 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source31)._0;
+                    BasicTerm _3139___mcc_h17 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source31)._1;
+                    BasicTerm _source32 = _3138___mcc_h16;
+                    if (_source32.is_Value) {
+                      BigInteger _3140___mcc_h18 = ((BasicTerm_Value)_source32).val;
+                      BasicTerm _source33 = _3139___mcc_h17;
+                      if (_source33.is_Value) {
+                        BigInteger _3141___mcc_h19 = ((BasicTerm_Value)_source33).val;
+                        {
+                          BigInteger _3142_x2 = _3141___mcc_h19;
+                          BigInteger _3143_x1 = _3140___mcc_h18;
+                          if ((_3143_x1) != (_3142_x2)) {
+                            b = false;
+                            return b;
+                          }
+                        }
+                      } else {
+                        BigInteger _3144___mcc_h20 = ((BasicTerm_StackVar)_source33).id;
+                        {
+                          BigInteger _3145_x2 = _3144___mcc_h20;
+                          BigInteger _3146_x1 = _3140___mcc_h18;
+                          b = false;
+                          return b;
+                        }
+                      }
+                    } else {
+                      BigInteger _3147___mcc_h21 = ((BasicTerm_StackVar)_source32).id;
+                      BasicTerm _source34 = _3139___mcc_h17;
+                      if (_source34.is_Value) {
+                        BigInteger _3148___mcc_h22 = ((BasicTerm_Value)_source34).val;
+                        {
+                          BigInteger _3149_x2 = _3148___mcc_h22;
+                          BigInteger _3150_x1 = _3147___mcc_h21;
+                          b = false;
+                          return b;
+                        }
+                      } else {
+                        BigInteger _3151___mcc_h23 = ((BasicTerm_StackVar)_source34).id;
+                        {
+                          BigInteger _3152_x2 = _3151___mcc_h23;
+                          BigInteger _3153_x1 = _3147___mcc_h21;
+                          if (((__default.idsFromInput(_3136_input1)).Contains((_3153_x1))) && ((__default.idsFromInput(_3133_input2)).Contains((_3152_x2)))) {
+                            if ((__default.getPos(_3136_input1, _3153_x1)) != (__default.getPos(_3133_input2, _3152_x2))) {
+                              b = false;
+                              return b;
+                            }
+                          } else if (((_3135_dict1).Contains((_3153_x1))) && ((_3132_dict2).Contains((_3152_x2)))) {
+                            bool _3154_aux;
+                            bool _out5;
+                            _out5 = __default.compareDictElems(_3136_input1, _3133_input2, _3135_dict1, _3132_dict2, _3153_x1, _3152_x2, Dafny.Set<BigInteger>.FromElements(), Dafny.Set<BigInteger>.FromElements());
+                            _3154_aux = _out5;
+                            if (!(_3154_aux)) {
+                              b = false;
+                              return b;
+                            }
+                          } else {
+                            b = false;
+                            return b;
+                          }
+                        }
+                      }
+                    }
+                  }
+                  _3137_i = (_3137_i) + (BigInteger.One);
+                }
+                b = true;
+                return b;
+              }
+            }
+          }
+        }
+      }
+      return b;
     }
   }
 } // end of namespace _module
