@@ -143,6 +143,29 @@ requires idsInDictAreWellDelimited(inputStack, dict)
                 case StackVar(x1) => if x1 in idsFromInput(inputStack) then true else dictElementConverges(inputStack, dict, x1, previously_ids + {key} )}
 }
 
+// Obtain the ids that appear inside a composite term recursively iff they belong to the dict. It is necessary to ensure convergence to well-definedness
+function method dependentIds(inputStack:seq<BasicTerm>, dict:map<int, StackElem>, key:int, previously_ids:set<int>) : (sol:set<int>)
+decreases dict.Keys - previously_ids
+requires previously_ids <= dict.Keys
+requires key in dict
+requires idsInDictAreWellDelimited(inputStack, dict)
+requires dictElementConverges(inputStack, dict, key, previously_ids)
+ensures previously_ids <= sol
+ensures sol <= dict.Keys
+{
+    match dict[key]
+        case Op(l)       => 
+            (set x,el | (el in l && match el {case Value(x) => false case StackVar(x1) => if x1 in idsFromInput(inputStack) then false else true} 
+            && x in dependentIds(inputStack, dict, getId(el), previously_ids + {key})) :: x) + previously_ids + {key}
+        case COp(el1, el2) =>
+            (set x | (match el1 {case Value(x) => false case StackVar(x1) => if x1 in idsFromInput(inputStack) then false else true} 
+            && x in dependentIds(inputStack, dict, getId(el1), previously_ids + {key})) :: x)
+            + 
+            (set x | (match el1 {case Value(x) => false case StackVar(x1) => if x1 in idsFromInput(inputStack) then false else true} 
+            && x in dependentIds(inputStack, dict, getId(el1), previously_ids + {key})) :: x)
+            + previously_ids + {key}
+}
+
 // A dict is well defined if all elements converge and its keys are not contained in the initial stack ids'
 predicate dictIsWellDefined(inputStack:seq<BasicTerm>, dict:map<int, StackElem>)
 {
@@ -164,11 +187,13 @@ predicate outputIsWellDefined(inputStack:seq<BasicTerm>, dict:map<int, StackElem
 
 // *** SFS related definitions
 
-// A SFS must satisfy the conditions from the initial stack, the final one and the dict
+// A SFS must satisfy the conditions from the initial stack, the final one and the dict. Besides, all elements in the dict must
+// appear as parameters of some of the elements in the final stack.
 predicate isSFS(sfs:ASFS)
 {
     match sfs 
         case SFS(input, dict, output) => initialInputIsWellDefined(input) && dictIsWellDefined(input, dict) && outputIsWellDefined(input, dict, output)
+            && (set x,id | id in dict && x in dependentIds(input, dict, id, {}) :: x) == dict.Keys
 }
 
 // Comparison related predicates: (b:bool)

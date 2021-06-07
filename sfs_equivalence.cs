@@ -9,7 +9,7 @@ using System;
 using System.Numerics;
 [assembly: DafnyAssembly.DafnySourceAttribute(@"
 // Dafny 3.1.0.30421
-// Command Line Options: /compile:2 /spillTargetCode:1 /optimize sfs_equivalence.dfy
+// Command Line Options: /compile:2 /spillTargetCode:1 sfs_equivalence.dfy
 // sfs_equivalence.dfy
 
 datatype BasicTerm = Value(val: int) | StackVar(id: int)
@@ -128,6 +128,22 @@ predicate dictElementConverges(inputStack: seq<BasicTerm>, dict: map<int, StackE
     match el2 { case Value(x) => true case StackVar(x1) => if x1 in idsFromInput(inputStack) then true else dictElementConverges(inputStack, dict, x1, previously_ids + {key}) }
 }
 
+function method dependentIds(inputStack: seq<BasicTerm>, dict: map<int, StackElem>, key: int, previously_ids: set<int>): (sol: set<int>)
+  requires previously_ids <= dict.Keys
+  requires key in dict
+  requires idsInDictAreWellDelimited(inputStack, dict)
+  requires dictElementConverges(inputStack, dict, key, previously_ids)
+  ensures previously_ids <= sol
+  ensures sol <= dict.Keys
+  decreases dict.Keys - previously_ids
+{
+  match dict[key]
+  case Op(l) =>
+    (set x, el | el in l && match el { case Value(x) => false case StackVar(x1) => (if x1 in idsFromInput(inputStack) then false else true) } && x in dependentIds(inputStack, dict, getId(el), previously_ids + {key}) :: x) + previously_ids + {key}
+  case COp(el1, el2) =>
+    (set x | match el1 { case Value(x) => false case StackVar(x1) => (if x1 in idsFromInput(inputStack) then false else true) } && x in dependentIds(inputStack, dict, getId(el1), previously_ids + {key}) :: x) + (set x | match el1 { case Value(x) => false case StackVar(x1) => (if x1 in idsFromInput(inputStack) then false else true) } && x in dependentIds(inputStack, dict, getId(el1), previously_ids + {key}) :: x) + previously_ids + {key}
+}
+
 predicate dictIsWellDefined(inputStack: seq<BasicTerm>, dict: map<int, StackElem>)
   decreases inputStack, dict
 {
@@ -156,7 +172,8 @@ predicate isSFS(sfs: ASFS)
   case SFS(input, dict, output) =>
     initialInputIsWellDefined(input) &&
     dictIsWellDefined(input, dict) &&
-    outputIsWellDefined(input, dict, output)
+    outputIsWellDefined(input, dict, output) &&
+    (set x, id | id in dict && x in dependentIds(input, dict, id, {}) :: x) == dict.Keys
 }
 
 predicate compareStackElem(input1: seq<BasicTerm>, input2: seq<BasicTerm>, dict1: map<int, StackElem>, dict2: map<int, StackElem>, key1: int, key2: int, prev_ids1: set<int>, prev_ids2: set<int>)
@@ -2367,28 +2384,28 @@ namespace _module {
     public static BigInteger getId(BasicTerm el) {
       BasicTerm _source0 = el;
       {
-        BigInteger _3005___mcc_h1 = ((BasicTerm_StackVar)_source0).id;
-        BigInteger _3006_x = _3005___mcc_h1;
-        return _3006_x;
+        BigInteger _3375___mcc_h1 = ((BasicTerm_StackVar)_source0).id;
+        BigInteger _3376_x = _3375___mcc_h1;
+        return _3376_x;
       }
     }
     public static Dafny.ISet<BigInteger> idsFromInput(Dafny.ISequence<BasicTerm> input) {
-      Dafny.ISet<BigInteger> _3007___accumulator = Dafny.Set<BigInteger>.FromElements();
+      Dafny.ISet<BigInteger> _3377___accumulator = Dafny.Set<BigInteger>.FromElements();
     TAIL_CALL_START: ;
       if ((input).Equals((Dafny.Sequence<BasicTerm>.FromElements()))) {
-        return Dafny.Set<BigInteger>.Union(Dafny.Set<BigInteger>.FromElements(), _3007___accumulator);
+        return Dafny.Set<BigInteger>.Union(Dafny.Set<BigInteger>.FromElements(), _3377___accumulator);
       } else {
         BasicTerm _source1 = (input).Select(BigInteger.Zero);
         if (_source1.is_Value) {
-          BigInteger _3008___mcc_h0 = ((BasicTerm_Value)_source1).val;
-          BigInteger _3009_val = _3008___mcc_h0;
+          BigInteger _3378___mcc_h0 = ((BasicTerm_Value)_source1).val;
+          BigInteger _3379_val = _3378___mcc_h0;
           Dafny.ISequence<BasicTerm> _in0 = (input).Drop(BigInteger.One);
           input = _in0;
           goto TAIL_CALL_START;
         } else {
-          BigInteger _3010___mcc_h1 = ((BasicTerm_StackVar)_source1).id;
-          BigInteger _3011_id = _3010___mcc_h1;
-          _3007___accumulator = Dafny.Set<BigInteger>.Union(_3007___accumulator, Dafny.Set<BigInteger>.FromElements(_3011_id));
+          BigInteger _3380___mcc_h1 = ((BasicTerm_StackVar)_source1).id;
+          BigInteger _3381_id = _3380___mcc_h1;
+          _3377___accumulator = Dafny.Set<BigInteger>.Union(_3377___accumulator, Dafny.Set<BigInteger>.FromElements(_3381_id));
           Dafny.ISequence<BasicTerm> _in1 = (input).Drop(BigInteger.One);
           input = _in1;
           goto TAIL_CALL_START;
@@ -2401,9 +2418,9 @@ namespace _module {
       if ((pos).Sign == 0) {
         BasicTerm _source2 = (input).Select(BigInteger.Zero);
         {
-          BigInteger _3012___mcc_h1 = ((BasicTerm_StackVar)_source2).id;
-          BigInteger _3013_x = _3012___mcc_h1;
-          return _3013_x;
+          BigInteger _3382___mcc_h1 = ((BasicTerm_StackVar)_source2).id;
+          BigInteger _3383_x = _3382___mcc_h1;
+          return _3383_x;
         }
       } else {
         Dafny.ISequence<BasicTerm> _in2 = input;
@@ -2415,16 +2432,16 @@ namespace _module {
     }
     public static BigInteger getPos(Dafny.ISequence<BasicTerm> input, BigInteger id)
     {
-      BigInteger _3014___accumulator = BigInteger.Zero;
+      BigInteger _3384___accumulator = BigInteger.Zero;
     TAIL_CALL_START: ;
       BasicTerm _source3 = (input).Select(BigInteger.Zero);
       {
-        BigInteger _3015___mcc_h3 = ((BasicTerm_StackVar)_source3).id;
-        BigInteger _3016_x = _3015___mcc_h3;
-        if ((_3016_x) == (id)) {
-          return (BigInteger.Zero) + (_3014___accumulator);
+        BigInteger _3385___mcc_h3 = ((BasicTerm_StackVar)_source3).id;
+        BigInteger _3386_x = _3385___mcc_h3;
+        if ((_3386_x) == (id)) {
+          return (BigInteger.Zero) + (_3384___accumulator);
         } else {
-          _3014___accumulator = (_3014___accumulator) + (BigInteger.One);
+          _3384___accumulator = (_3384___accumulator) + (BigInteger.One);
           Dafny.ISequence<BasicTerm> _in4 = (input).Drop(BigInteger.One);
           BigInteger _in5 = id;
           input = _in4;
@@ -2433,83 +2450,152 @@ namespace _module {
         }
       }
     }
+    public static Dafny.ISet<BigInteger> dependentIds(Dafny.ISequence<BasicTerm> inputStack, Dafny.IMap<BigInteger,StackElem> dict, BigInteger key, Dafny.ISet<BigInteger> previously__ids)
+    {
+      StackElem _source4 = Dafny.Map<BigInteger, StackElem>.Select(dict,key);
+      if (_source4.is_Op) {
+        Dafny.ISequence<BasicTerm> _3387___mcc_h0 = ((StackElem_Op)_source4).input__stack;
+        Dafny.ISequence<BasicTerm> _3388_l = _3387___mcc_h0;
+        return Dafny.Set<BigInteger>.Union(Dafny.Set<BigInteger>.Union(Dafny.Helpers.Id<Func<Dafny.ISequence<BasicTerm>, Dafny.IMap<BigInteger,StackElem>, Dafny.ISet<BigInteger>, Dafny.ISequence<BasicTerm>, BigInteger, Dafny.ISet<BigInteger>>>((_3389_l, _3390_dict, _3391_previously__ids, _3392_inputStack, _3393_key) => ((System.Func<Dafny.ISet<BigInteger>>)(() => {
+          var _coll0 = new System.Collections.Generic.List<BigInteger>();
+          foreach (BasicTerm _compr_0 in (_3389_l).Elements) {
+            BasicTerm _3394_el = (BasicTerm)_compr_0;
+            foreach (BigInteger _compr_1 in (__default.dependentIds(_3392_inputStack, _3390_dict, __default.getId(_3394_el), Dafny.Set<BigInteger>.Union(_3391_previously__ids, Dafny.Set<BigInteger>.FromElements(_3393_key)))).Elements) {
+              BigInteger _3395_x = (BigInteger)_compr_1;
+              if ((((_3389_l).Contains((_3394_el))) && (((System.Func<BasicTerm, bool>)((_source5) => {
+                if (_source5.is_Value) {
+                  BigInteger _3396___mcc_h3 = ((BasicTerm_Value)_source5).val;
+                  return Dafny.Helpers.Let<BigInteger, bool>(_3396___mcc_h3, _pat_let0_0 => Dafny.Helpers.Let<BigInteger, bool>(_pat_let0_0, _3397_x => false));
+                } else {
+                  BigInteger _3398___mcc_h4 = ((BasicTerm_StackVar)_source5).id;
+                  return Dafny.Helpers.Let<BigInteger, bool>(_3398___mcc_h4, _pat_let1_0 => Dafny.Helpers.Let<BigInteger, bool>(_pat_let1_0, _3399_x1 => (((__default.idsFromInput(_3392_inputStack)).Contains((_3399_x1))) ? (false) : (true))));
+                }
+              }))(_3394_el))) && ((__default.dependentIds(_3392_inputStack, _3390_dict, __default.getId(_3394_el), Dafny.Set<BigInteger>.Union(_3391_previously__ids, Dafny.Set<BigInteger>.FromElements(_3393_key)))).Contains((_3395_x)))) {
+                _coll0.Add(_3395_x);
+              }
+            }
+          }
+          return Dafny.Set<BigInteger>.FromCollection(_coll0);
+        }))())(_3388_l, dict, previously__ids, inputStack, key), previously__ids), Dafny.Set<BigInteger>.FromElements(key));
+      } else {
+        BasicTerm _3400___mcc_h1 = ((StackElem_COp)_source4).elem1;
+        BasicTerm _3401___mcc_h2 = ((StackElem_COp)_source4).elem2;
+        BasicTerm _3402_el2 = _3401___mcc_h2;
+        BasicTerm _3403_el1 = _3400___mcc_h1;
+        return Dafny.Set<BigInteger>.Union(Dafny.Set<BigInteger>.Union(Dafny.Set<BigInteger>.Union(Dafny.Helpers.Id<Func<BasicTerm, Dafny.IMap<BigInteger,StackElem>, Dafny.ISet<BigInteger>, Dafny.ISequence<BasicTerm>, BigInteger, Dafny.ISet<BigInteger>>>((_3404_el1, _3405_dict, _3406_previously__ids, _3407_inputStack, _3408_key) => ((System.Func<Dafny.ISet<BigInteger>>)(() => {
+          var _coll1 = new System.Collections.Generic.List<BigInteger>();
+          foreach (BigInteger _compr_2 in (__default.dependentIds(_3407_inputStack, _3405_dict, __default.getId(_3404_el1), Dafny.Set<BigInteger>.Union(_3406_previously__ids, Dafny.Set<BigInteger>.FromElements(_3408_key)))).Elements) {
+            BigInteger _3409_x = (BigInteger)_compr_2;
+            if ((((System.Func<BasicTerm, bool>)((_source6) => {
+              if (_source6.is_Value) {
+                BigInteger _3410___mcc_h5 = ((BasicTerm_Value)_source6).val;
+                return Dafny.Helpers.Let<BigInteger, bool>(_3410___mcc_h5, _pat_let2_0 => Dafny.Helpers.Let<BigInteger, bool>(_pat_let2_0, _3411_x => false));
+              } else {
+                BigInteger _3412___mcc_h6 = ((BasicTerm_StackVar)_source6).id;
+                return Dafny.Helpers.Let<BigInteger, bool>(_3412___mcc_h6, _pat_let3_0 => Dafny.Helpers.Let<BigInteger, bool>(_pat_let3_0, _3413_x1 => (((__default.idsFromInput(_3407_inputStack)).Contains((_3413_x1))) ? (false) : (true))));
+              }
+            }))(_3404_el1)) && ((__default.dependentIds(_3407_inputStack, _3405_dict, __default.getId(_3404_el1), Dafny.Set<BigInteger>.Union(_3406_previously__ids, Dafny.Set<BigInteger>.FromElements(_3408_key)))).Contains((_3409_x)))) {
+              _coll1.Add(_3409_x);
+            }
+          }
+          return Dafny.Set<BigInteger>.FromCollection(_coll1);
+        }))())(_3403_el1, dict, previously__ids, inputStack, key), Dafny.Helpers.Id<Func<BasicTerm, Dafny.IMap<BigInteger,StackElem>, Dafny.ISet<BigInteger>, Dafny.ISequence<BasicTerm>, BigInteger, Dafny.ISet<BigInteger>>>((_3414_el1, _3415_dict, _3416_previously__ids, _3417_inputStack, _3418_key) => ((System.Func<Dafny.ISet<BigInteger>>)(() => {
+          var _coll2 = new System.Collections.Generic.List<BigInteger>();
+          foreach (BigInteger _compr_3 in (__default.dependentIds(_3417_inputStack, _3415_dict, __default.getId(_3414_el1), Dafny.Set<BigInteger>.Union(_3416_previously__ids, Dafny.Set<BigInteger>.FromElements(_3418_key)))).Elements) {
+            BigInteger _3419_x = (BigInteger)_compr_3;
+            if ((((System.Func<BasicTerm, bool>)((_source7) => {
+              if (_source7.is_Value) {
+                BigInteger _3420___mcc_h7 = ((BasicTerm_Value)_source7).val;
+                return Dafny.Helpers.Let<BigInteger, bool>(_3420___mcc_h7, _pat_let4_0 => Dafny.Helpers.Let<BigInteger, bool>(_pat_let4_0, _3421_x => false));
+              } else {
+                BigInteger _3422___mcc_h8 = ((BasicTerm_StackVar)_source7).id;
+                return Dafny.Helpers.Let<BigInteger, bool>(_3422___mcc_h8, _pat_let5_0 => Dafny.Helpers.Let<BigInteger, bool>(_pat_let5_0, _3423_x1 => (((__default.idsFromInput(_3417_inputStack)).Contains((_3423_x1))) ? (false) : (true))));
+              }
+            }))(_3414_el1)) && ((__default.dependentIds(_3417_inputStack, _3415_dict, __default.getId(_3414_el1), Dafny.Set<BigInteger>.Union(_3416_previously__ids, Dafny.Set<BigInteger>.FromElements(_3418_key)))).Contains((_3419_x)))) {
+              _coll2.Add(_3419_x);
+            }
+          }
+          return Dafny.Set<BigInteger>.FromCollection(_coll2);
+        }))())(_3403_el1, dict, previously__ids, inputStack, key)), previously__ids), Dafny.Set<BigInteger>.FromElements(key));
+      }
+    }
     public static bool compareDictElems(Dafny.ISequence<BasicTerm> input1, Dafny.ISequence<BasicTerm> input2, Dafny.IMap<BigInteger,StackElem> dict1, Dafny.IMap<BigInteger,StackElem> dict2, BigInteger key1, BigInteger key2, Dafny.ISet<BigInteger> prev__ids1, Dafny.ISet<BigInteger> prev__ids2)
     {
       bool b = false;
-      _System.Tuple2<StackElem, StackElem> _source4 = @_System.Tuple2<StackElem, StackElem>.create(Dafny.Map<BigInteger, StackElem>.Select(dict1,key1), Dafny.Map<BigInteger, StackElem>.Select(dict2,key2));
+      _System.Tuple2<StackElem, StackElem> _source8 = @_System.Tuple2<StackElem, StackElem>.create(Dafny.Map<BigInteger, StackElem>.Select(dict1,key1), Dafny.Map<BigInteger, StackElem>.Select(dict2,key2));
       {
-        StackElem _3017___mcc_h0 = ((_System.Tuple2<StackElem, StackElem>)_source4)._0;
-        StackElem _3018___mcc_h1 = ((_System.Tuple2<StackElem, StackElem>)_source4)._1;
-        StackElem _source5 = _3017___mcc_h0;
-        if (_source5.is_Op) {
-          Dafny.ISequence<BasicTerm> _3019___mcc_h2 = ((StackElem_Op)_source5).input__stack;
-          StackElem _source6 = _3018___mcc_h1;
-          if (_source6.is_Op) {
-            Dafny.ISequence<BasicTerm> _3020___mcc_h3 = ((StackElem_Op)_source6).input__stack;
+        StackElem _3424___mcc_h0 = ((_System.Tuple2<StackElem, StackElem>)_source8)._0;
+        StackElem _3425___mcc_h1 = ((_System.Tuple2<StackElem, StackElem>)_source8)._1;
+        StackElem _source9 = _3424___mcc_h0;
+        if (_source9.is_Op) {
+          Dafny.ISequence<BasicTerm> _3426___mcc_h2 = ((StackElem_Op)_source9).input__stack;
+          StackElem _source10 = _3425___mcc_h1;
+          if (_source10.is_Op) {
+            Dafny.ISequence<BasicTerm> _3427___mcc_h3 = ((StackElem_Op)_source10).input__stack;
             {
-              Dafny.ISequence<BasicTerm> _3021_l2 = _3020___mcc_h3;
-              Dafny.ISequence<BasicTerm> _3022_l1 = _3019___mcc_h2;
-              if ((new BigInteger((_3022_l1).Count)) != (new BigInteger((_3021_l2).Count))) {
+              Dafny.ISequence<BasicTerm> _3428_l2 = _3427___mcc_h3;
+              Dafny.ISequence<BasicTerm> _3429_l1 = _3426___mcc_h2;
+              if ((new BigInteger((_3429_l1).Count)) != (new BigInteger((_3428_l2).Count))) {
                 b = false;
                 return b;
               } else {
-                BigInteger _3023_i;
-                _3023_i = BigInteger.Zero;
-                while ((_3023_i) < (new BigInteger((_3022_l1).Count))) {
-                  _System.Tuple2<BasicTerm, BasicTerm> _source7 = @_System.Tuple2<BasicTerm, BasicTerm>.create((_3022_l1).Select(_3023_i), (_3021_l2).Select(_3023_i));
+                BigInteger _3430_i;
+                _3430_i = BigInteger.Zero;
+                while ((_3430_i) < (new BigInteger((_3429_l1).Count))) {
+                  _System.Tuple2<BasicTerm, BasicTerm> _source11 = @_System.Tuple2<BasicTerm, BasicTerm>.create((_3429_l1).Select(_3430_i), (_3428_l2).Select(_3430_i));
                   {
-                    BasicTerm _3024___mcc_h19 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source7)._0;
-                    BasicTerm _3025___mcc_h20 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source7)._1;
-                    BasicTerm _source8 = _3024___mcc_h19;
-                    if (_source8.is_Value) {
-                      BigInteger _3026___mcc_h21 = ((BasicTerm_Value)_source8).val;
-                      BasicTerm _source9 = _3025___mcc_h20;
-                      if (_source9.is_Value) {
-                        BigInteger _3027___mcc_h22 = ((BasicTerm_Value)_source9).val;
+                    BasicTerm _3431___mcc_h19 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source11)._0;
+                    BasicTerm _3432___mcc_h20 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source11)._1;
+                    BasicTerm _source12 = _3431___mcc_h19;
+                    if (_source12.is_Value) {
+                      BigInteger _3433___mcc_h21 = ((BasicTerm_Value)_source12).val;
+                      BasicTerm _source13 = _3432___mcc_h20;
+                      if (_source13.is_Value) {
+                        BigInteger _3434___mcc_h22 = ((BasicTerm_Value)_source13).val;
                         {
-                          BigInteger _3028_x2 = _3027___mcc_h22;
-                          BigInteger _3029_x1 = _3026___mcc_h21;
-                          if ((_3029_x1) != (_3028_x2)) {
+                          BigInteger _3435_x2 = _3434___mcc_h22;
+                          BigInteger _3436_x1 = _3433___mcc_h21;
+                          if ((_3436_x1) != (_3435_x2)) {
                             b = false;
                             return b;
                           }
                         }
                       } else {
-                        BigInteger _3030___mcc_h23 = ((BasicTerm_StackVar)_source9).id;
+                        BigInteger _3437___mcc_h23 = ((BasicTerm_StackVar)_source13).id;
                         {
-                          BigInteger _3031_x2 = _3030___mcc_h23;
-                          BigInteger _3032_x1 = _3026___mcc_h21;
+                          BigInteger _3438_x2 = _3437___mcc_h23;
+                          BigInteger _3439_x1 = _3433___mcc_h21;
                           b = false;
                           return b;
                         }
                       }
                     } else {
-                      BigInteger _3033___mcc_h24 = ((BasicTerm_StackVar)_source8).id;
-                      BasicTerm _source10 = _3025___mcc_h20;
-                      if (_source10.is_Value) {
-                        BigInteger _3034___mcc_h25 = ((BasicTerm_Value)_source10).val;
+                      BigInteger _3440___mcc_h24 = ((BasicTerm_StackVar)_source12).id;
+                      BasicTerm _source14 = _3432___mcc_h20;
+                      if (_source14.is_Value) {
+                        BigInteger _3441___mcc_h25 = ((BasicTerm_Value)_source14).val;
                         {
-                          BigInteger _3035_x2 = _3034___mcc_h25;
-                          BigInteger _3036_x1 = _3033___mcc_h24;
+                          BigInteger _3442_x2 = _3441___mcc_h25;
+                          BigInteger _3443_x1 = _3440___mcc_h24;
                           b = false;
                           return b;
                         }
                       } else {
-                        BigInteger _3037___mcc_h26 = ((BasicTerm_StackVar)_source10).id;
+                        BigInteger _3444___mcc_h26 = ((BasicTerm_StackVar)_source14).id;
                         {
-                          BigInteger _3038_x2 = _3037___mcc_h26;
-                          BigInteger _3039_x1 = _3033___mcc_h24;
-                          if (((__default.idsFromInput(input1)).Contains((_3039_x1))) && ((__default.idsFromInput(input2)).Contains((_3038_x2)))) {
-                            if ((__default.getPos(input1, _3039_x1)) != (__default.getPos(input2, _3038_x2))) {
+                          BigInteger _3445_x2 = _3444___mcc_h26;
+                          BigInteger _3446_x1 = _3440___mcc_h24;
+                          if (((__default.idsFromInput(input1)).Contains((_3446_x1))) && ((__default.idsFromInput(input2)).Contains((_3445_x2)))) {
+                            if ((__default.getPos(input1, _3446_x1)) != (__default.getPos(input2, _3445_x2))) {
                               b = false;
                               return b;
                             }
-                          } else if (((dict1).Contains((_3039_x1))) && ((dict2).Contains((_3038_x2)))) {
-                            bool _3040_aux;
+                          } else if (((dict1).Contains((_3446_x1))) && ((dict2).Contains((_3445_x2)))) {
+                            bool _3447_aux;
                             bool _out0;
-                            _out0 = __default.compareDictElems(input1, input2, dict1, dict2, _3039_x1, _3038_x2, Dafny.Set<BigInteger>.Union(prev__ids1, Dafny.Set<BigInteger>.FromElements(key1)), Dafny.Set<BigInteger>.Union(prev__ids2, Dafny.Set<BigInteger>.FromElements(key2)));
-                            _3040_aux = _out0;
-                            if (!(_3040_aux)) {
+                            _out0 = __default.compareDictElems(input1, input2, dict1, dict2, _3446_x1, _3445_x2, Dafny.Set<BigInteger>.Union(prev__ids1, Dafny.Set<BigInteger>.FromElements(key1)), Dafny.Set<BigInteger>.Union(prev__ids2, Dafny.Set<BigInteger>.FromElements(key2)));
+                            _3447_aux = _out0;
+                            if (!(_3447_aux)) {
                               b = false;
                               return b;
                             }
@@ -2521,275 +2607,275 @@ namespace _module {
                       }
                     }
                   }
-                  _3023_i = (_3023_i) + (BigInteger.One);
+                  _3430_i = (_3430_i) + (BigInteger.One);
                 }
                 b = true;
                 return b;
               }
             }
           } else {
-            BasicTerm _3041___mcc_h4 = ((StackElem_COp)_source6).elem1;
-            BasicTerm _3042___mcc_h5 = ((StackElem_COp)_source6).elem2;
+            BasicTerm _3448___mcc_h4 = ((StackElem_COp)_source10).elem1;
+            BasicTerm _3449___mcc_h5 = ((StackElem_COp)_source10).elem2;
             {
-              BasicTerm _3043_y2 = _3042___mcc_h5;
-              BasicTerm _3044_x2 = _3041___mcc_h4;
-              Dafny.ISequence<BasicTerm> _3045_l1 = _3019___mcc_h2;
+              BasicTerm _3450_y2 = _3449___mcc_h5;
+              BasicTerm _3451_x2 = _3448___mcc_h4;
+              Dafny.ISequence<BasicTerm> _3452_l1 = _3426___mcc_h2;
               b = false;
               return b;
             }
           }
         } else {
-          BasicTerm _3046___mcc_h6 = ((StackElem_COp)_source5).elem1;
-          BasicTerm _3047___mcc_h7 = ((StackElem_COp)_source5).elem2;
-          StackElem _source11 = _3018___mcc_h1;
-          if (_source11.is_Op) {
-            Dafny.ISequence<BasicTerm> _3048___mcc_h8 = ((StackElem_Op)_source11).input__stack;
+          BasicTerm _3453___mcc_h6 = ((StackElem_COp)_source9).elem1;
+          BasicTerm _3454___mcc_h7 = ((StackElem_COp)_source9).elem2;
+          StackElem _source15 = _3425___mcc_h1;
+          if (_source15.is_Op) {
+            Dafny.ISequence<BasicTerm> _3455___mcc_h8 = ((StackElem_Op)_source15).input__stack;
             {
-              Dafny.ISequence<BasicTerm> _3049_l2 = _3048___mcc_h8;
-              BasicTerm _3050_y1 = _3047___mcc_h7;
-              BasicTerm _3051_x1 = _3046___mcc_h6;
+              Dafny.ISequence<BasicTerm> _3456_l2 = _3455___mcc_h8;
+              BasicTerm _3457_y1 = _3454___mcc_h7;
+              BasicTerm _3458_x1 = _3453___mcc_h6;
               b = false;
               return b;
             }
           } else {
-            BasicTerm _3052___mcc_h9 = ((StackElem_COp)_source11).elem1;
-            BasicTerm _3053___mcc_h10 = ((StackElem_COp)_source11).elem2;
+            BasicTerm _3459___mcc_h9 = ((StackElem_COp)_source15).elem1;
+            BasicTerm _3460___mcc_h10 = ((StackElem_COp)_source15).elem2;
             {
-              BasicTerm _3054_el22 = _3053___mcc_h10;
-              BasicTerm _3055_el21 = _3052___mcc_h9;
-              BasicTerm _3056_el12 = _3047___mcc_h7;
-              BasicTerm _3057_el11 = _3046___mcc_h6;
-              bool _3058_b1;
-              _3058_b1 = true;
-              _System.Tuple2<BasicTerm, BasicTerm> _source12 = @_System.Tuple2<BasicTerm, BasicTerm>.create(_3057_el11, _3055_el21);
+              BasicTerm _3461_el22 = _3460___mcc_h10;
+              BasicTerm _3462_el21 = _3459___mcc_h9;
+              BasicTerm _3463_el12 = _3454___mcc_h7;
+              BasicTerm _3464_el11 = _3453___mcc_h6;
+              bool _3465_b1;
+              _3465_b1 = true;
+              _System.Tuple2<BasicTerm, BasicTerm> _source16 = @_System.Tuple2<BasicTerm, BasicTerm>.create(_3464_el11, _3462_el21);
               {
-                BasicTerm _3059___mcc_h27 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source12)._0;
-                BasicTerm _3060___mcc_h28 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source12)._1;
-                BasicTerm _source13 = _3059___mcc_h27;
-                if (_source13.is_Value) {
-                  BigInteger _3061___mcc_h29 = ((BasicTerm_Value)_source13).val;
-                  BasicTerm _source14 = _3060___mcc_h28;
-                  if (_source14.is_Value) {
-                    BigInteger _3062___mcc_h30 = ((BasicTerm_Value)_source14).val;
+                BasicTerm _3466___mcc_h27 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source16)._0;
+                BasicTerm _3467___mcc_h28 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source16)._1;
+                BasicTerm _source17 = _3466___mcc_h27;
+                if (_source17.is_Value) {
+                  BigInteger _3468___mcc_h29 = ((BasicTerm_Value)_source17).val;
+                  BasicTerm _source18 = _3467___mcc_h28;
+                  if (_source18.is_Value) {
+                    BigInteger _3469___mcc_h30 = ((BasicTerm_Value)_source18).val;
                     {
-                      BigInteger _3063_x2 = _3062___mcc_h30;
-                      BigInteger _3064_x1 = _3061___mcc_h29;
-                      _3058_b1 = (_3064_x1) == (_3063_x2);
+                      BigInteger _3470_x2 = _3469___mcc_h30;
+                      BigInteger _3471_x1 = _3468___mcc_h29;
+                      _3465_b1 = (_3471_x1) == (_3470_x2);
                     }
                   } else {
-                    BigInteger _3065___mcc_h31 = ((BasicTerm_StackVar)_source14).id;
+                    BigInteger _3472___mcc_h31 = ((BasicTerm_StackVar)_source18).id;
                     {
-                      BigInteger _3066_x2 = _3065___mcc_h31;
-                      BigInteger _3067_x1 = _3061___mcc_h29;
+                      BigInteger _3473_x2 = _3472___mcc_h31;
+                      BigInteger _3474_x1 = _3468___mcc_h29;
                       {
-                        _3058_b1 = false;
+                        _3465_b1 = false;
                       }
                     }
                   }
                 } else {
-                  BigInteger _3068___mcc_h32 = ((BasicTerm_StackVar)_source13).id;
-                  BasicTerm _source15 = _3060___mcc_h28;
-                  if (_source15.is_Value) {
-                    BigInteger _3069___mcc_h33 = ((BasicTerm_Value)_source15).val;
+                  BigInteger _3475___mcc_h32 = ((BasicTerm_StackVar)_source17).id;
+                  BasicTerm _source19 = _3467___mcc_h28;
+                  if (_source19.is_Value) {
+                    BigInteger _3476___mcc_h33 = ((BasicTerm_Value)_source19).val;
                     {
-                      BigInteger _3070_x2 = _3069___mcc_h33;
-                      BigInteger _3071_x1 = _3068___mcc_h32;
+                      BigInteger _3477_x2 = _3476___mcc_h33;
+                      BigInteger _3478_x1 = _3475___mcc_h32;
                       {
-                        _3058_b1 = false;
+                        _3465_b1 = false;
                       }
                     }
                   } else {
-                    BigInteger _3072___mcc_h34 = ((BasicTerm_StackVar)_source15).id;
+                    BigInteger _3479___mcc_h34 = ((BasicTerm_StackVar)_source19).id;
                     {
-                      BigInteger _3073_x2 = _3072___mcc_h34;
-                      BigInteger _3074_x1 = _3068___mcc_h32;
-                      if (((__default.idsFromInput(input1)).Contains((_3074_x1))) && ((__default.idsFromInput(input2)).Contains((_3073_x2)))) {
-                        _3058_b1 = (__default.getPos(input1, _3074_x1)) == (__default.getPos(input2, _3073_x2));
-                      } else if (((dict1).Contains((_3074_x1))) && ((dict2).Contains((_3073_x2)))) {
+                      BigInteger _3480_x2 = _3479___mcc_h34;
+                      BigInteger _3481_x1 = _3475___mcc_h32;
+                      if (((__default.idsFromInput(input1)).Contains((_3481_x1))) && ((__default.idsFromInput(input2)).Contains((_3480_x2)))) {
+                        _3465_b1 = (__default.getPos(input1, _3481_x1)) == (__default.getPos(input2, _3480_x2));
+                      } else if (((dict1).Contains((_3481_x1))) && ((dict2).Contains((_3480_x2)))) {
                         bool _out1;
-                        _out1 = __default.compareDictElems(input1, input2, dict1, dict2, _3074_x1, _3073_x2, Dafny.Set<BigInteger>.Union(prev__ids1, Dafny.Set<BigInteger>.FromElements(key1)), Dafny.Set<BigInteger>.Union(prev__ids2, Dafny.Set<BigInteger>.FromElements(key2)));
-                        _3058_b1 = _out1;
+                        _out1 = __default.compareDictElems(input1, input2, dict1, dict2, _3481_x1, _3480_x2, Dafny.Set<BigInteger>.Union(prev__ids1, Dafny.Set<BigInteger>.FromElements(key1)), Dafny.Set<BigInteger>.Union(prev__ids2, Dafny.Set<BigInteger>.FromElements(key2)));
+                        _3465_b1 = _out1;
                       } else {
-                        _3058_b1 = false;
+                        _3465_b1 = false;
                       }
                     }
                   }
                 }
               }
-              if (_3058_b1) {
-                _System.Tuple2<BasicTerm, BasicTerm> _source16 = @_System.Tuple2<BasicTerm, BasicTerm>.create(_3056_el12, _3054_el22);
+              if (_3465_b1) {
+                _System.Tuple2<BasicTerm, BasicTerm> _source20 = @_System.Tuple2<BasicTerm, BasicTerm>.create(_3463_el12, _3461_el22);
                 {
-                  BasicTerm _3075___mcc_h35 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source16)._0;
-                  BasicTerm _3076___mcc_h36 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source16)._1;
-                  BasicTerm _source17 = _3075___mcc_h35;
-                  if (_source17.is_Value) {
-                    BigInteger _3077___mcc_h37 = ((BasicTerm_Value)_source17).val;
-                    BasicTerm _source18 = _3076___mcc_h36;
-                    if (_source18.is_Value) {
-                      BigInteger _3078___mcc_h38 = ((BasicTerm_Value)_source18).val;
+                  BasicTerm _3482___mcc_h35 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source20)._0;
+                  BasicTerm _3483___mcc_h36 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source20)._1;
+                  BasicTerm _source21 = _3482___mcc_h35;
+                  if (_source21.is_Value) {
+                    BigInteger _3484___mcc_h37 = ((BasicTerm_Value)_source21).val;
+                    BasicTerm _source22 = _3483___mcc_h36;
+                    if (_source22.is_Value) {
+                      BigInteger _3485___mcc_h38 = ((BasicTerm_Value)_source22).val;
                       {
-                        BigInteger _3079_x2 = _3078___mcc_h38;
-                        BigInteger _3080_x1 = _3077___mcc_h37;
-                        _3058_b1 = (_3080_x1) == (_3079_x2);
+                        BigInteger _3486_x2 = _3485___mcc_h38;
+                        BigInteger _3487_x1 = _3484___mcc_h37;
+                        _3465_b1 = (_3487_x1) == (_3486_x2);
                       }
                     } else {
-                      BigInteger _3081___mcc_h39 = ((BasicTerm_StackVar)_source18).id;
+                      BigInteger _3488___mcc_h39 = ((BasicTerm_StackVar)_source22).id;
                       {
-                        BigInteger _3082_x2 = _3081___mcc_h39;
-                        BigInteger _3083_x1 = _3077___mcc_h37;
+                        BigInteger _3489_x2 = _3488___mcc_h39;
+                        BigInteger _3490_x1 = _3484___mcc_h37;
                         {
-                          _3058_b1 = false;
+                          _3465_b1 = false;
                         }
                       }
                     }
                   } else {
-                    BigInteger _3084___mcc_h40 = ((BasicTerm_StackVar)_source17).id;
-                    BasicTerm _source19 = _3076___mcc_h36;
-                    if (_source19.is_Value) {
-                      BigInteger _3085___mcc_h41 = ((BasicTerm_Value)_source19).val;
+                    BigInteger _3491___mcc_h40 = ((BasicTerm_StackVar)_source21).id;
+                    BasicTerm _source23 = _3483___mcc_h36;
+                    if (_source23.is_Value) {
+                      BigInteger _3492___mcc_h41 = ((BasicTerm_Value)_source23).val;
                       {
-                        BigInteger _3086_x2 = _3085___mcc_h41;
-                        BigInteger _3087_x1 = _3084___mcc_h40;
+                        BigInteger _3493_x2 = _3492___mcc_h41;
+                        BigInteger _3494_x1 = _3491___mcc_h40;
                         {
-                          _3058_b1 = false;
+                          _3465_b1 = false;
                         }
                       }
                     } else {
-                      BigInteger _3088___mcc_h42 = ((BasicTerm_StackVar)_source19).id;
+                      BigInteger _3495___mcc_h42 = ((BasicTerm_StackVar)_source23).id;
                       {
-                        BigInteger _3089_x2 = _3088___mcc_h42;
-                        BigInteger _3090_x1 = _3084___mcc_h40;
-                        if (((__default.idsFromInput(input1)).Contains((_3090_x1))) && ((__default.idsFromInput(input2)).Contains((_3089_x2)))) {
-                          _3058_b1 = (__default.getPos(input1, _3090_x1)) == (__default.getPos(input2, _3089_x2));
-                        } else if (((dict1).Contains((_3090_x1))) && ((dict2).Contains((_3089_x2)))) {
+                        BigInteger _3496_x2 = _3495___mcc_h42;
+                        BigInteger _3497_x1 = _3491___mcc_h40;
+                        if (((__default.idsFromInput(input1)).Contains((_3497_x1))) && ((__default.idsFromInput(input2)).Contains((_3496_x2)))) {
+                          _3465_b1 = (__default.getPos(input1, _3497_x1)) == (__default.getPos(input2, _3496_x2));
+                        } else if (((dict1).Contains((_3497_x1))) && ((dict2).Contains((_3496_x2)))) {
                           bool _out2;
-                          _out2 = __default.compareDictElems(input1, input2, dict1, dict2, _3090_x1, _3089_x2, Dafny.Set<BigInteger>.Union(prev__ids1, Dafny.Set<BigInteger>.FromElements(key1)), Dafny.Set<BigInteger>.Union(prev__ids2, Dafny.Set<BigInteger>.FromElements(key2)));
-                          _3058_b1 = _out2;
+                          _out2 = __default.compareDictElems(input1, input2, dict1, dict2, _3497_x1, _3496_x2, Dafny.Set<BigInteger>.Union(prev__ids1, Dafny.Set<BigInteger>.FromElements(key1)), Dafny.Set<BigInteger>.Union(prev__ids2, Dafny.Set<BigInteger>.FromElements(key2)));
+                          _3465_b1 = _out2;
                         } else {
-                          _3058_b1 = false;
+                          _3465_b1 = false;
                         }
                       }
                     }
                   }
                 }
-                if (_3058_b1) {
+                if (_3465_b1) {
                   b = true;
                   return b;
                 }
               }
-              _3058_b1 = true;
-              _System.Tuple2<BasicTerm, BasicTerm> _source20 = @_System.Tuple2<BasicTerm, BasicTerm>.create(_3056_el12, _3055_el21);
+              _3465_b1 = true;
+              _System.Tuple2<BasicTerm, BasicTerm> _source24 = @_System.Tuple2<BasicTerm, BasicTerm>.create(_3463_el12, _3462_el21);
               {
-                BasicTerm _3091___mcc_h43 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source20)._0;
-                BasicTerm _3092___mcc_h44 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source20)._1;
-                BasicTerm _source21 = _3091___mcc_h43;
-                if (_source21.is_Value) {
-                  BigInteger _3093___mcc_h45 = ((BasicTerm_Value)_source21).val;
-                  BasicTerm _source22 = _3092___mcc_h44;
-                  if (_source22.is_Value) {
-                    BigInteger _3094___mcc_h46 = ((BasicTerm_Value)_source22).val;
+                BasicTerm _3498___mcc_h43 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source24)._0;
+                BasicTerm _3499___mcc_h44 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source24)._1;
+                BasicTerm _source25 = _3498___mcc_h43;
+                if (_source25.is_Value) {
+                  BigInteger _3500___mcc_h45 = ((BasicTerm_Value)_source25).val;
+                  BasicTerm _source26 = _3499___mcc_h44;
+                  if (_source26.is_Value) {
+                    BigInteger _3501___mcc_h46 = ((BasicTerm_Value)_source26).val;
                     {
-                      BigInteger _3095_x2 = _3094___mcc_h46;
-                      BigInteger _3096_x1 = _3093___mcc_h45;
-                      _3058_b1 = (_3096_x1) == (_3095_x2);
+                      BigInteger _3502_x2 = _3501___mcc_h46;
+                      BigInteger _3503_x1 = _3500___mcc_h45;
+                      _3465_b1 = (_3503_x1) == (_3502_x2);
                     }
                   } else {
-                    BigInteger _3097___mcc_h47 = ((BasicTerm_StackVar)_source22).id;
+                    BigInteger _3504___mcc_h47 = ((BasicTerm_StackVar)_source26).id;
                     {
-                      BigInteger _3098_x2 = _3097___mcc_h47;
-                      BigInteger _3099_x1 = _3093___mcc_h45;
+                      BigInteger _3505_x2 = _3504___mcc_h47;
+                      BigInteger _3506_x1 = _3500___mcc_h45;
                       {
-                        _3058_b1 = false;
+                        _3465_b1 = false;
                       }
                     }
                   }
                 } else {
-                  BigInteger _3100___mcc_h48 = ((BasicTerm_StackVar)_source21).id;
-                  BasicTerm _source23 = _3092___mcc_h44;
-                  if (_source23.is_Value) {
-                    BigInteger _3101___mcc_h49 = ((BasicTerm_Value)_source23).val;
+                  BigInteger _3507___mcc_h48 = ((BasicTerm_StackVar)_source25).id;
+                  BasicTerm _source27 = _3499___mcc_h44;
+                  if (_source27.is_Value) {
+                    BigInteger _3508___mcc_h49 = ((BasicTerm_Value)_source27).val;
                     {
-                      BigInteger _3102_x2 = _3101___mcc_h49;
-                      BigInteger _3103_x1 = _3100___mcc_h48;
+                      BigInteger _3509_x2 = _3508___mcc_h49;
+                      BigInteger _3510_x1 = _3507___mcc_h48;
                       {
-                        _3058_b1 = false;
+                        _3465_b1 = false;
                       }
                     }
                   } else {
-                    BigInteger _3104___mcc_h50 = ((BasicTerm_StackVar)_source23).id;
+                    BigInteger _3511___mcc_h50 = ((BasicTerm_StackVar)_source27).id;
                     {
-                      BigInteger _3105_x2 = _3104___mcc_h50;
-                      BigInteger _3106_x1 = _3100___mcc_h48;
-                      if (((__default.idsFromInput(input1)).Contains((_3106_x1))) && ((__default.idsFromInput(input2)).Contains((_3105_x2)))) {
-                        _3058_b1 = (__default.getPos(input1, _3106_x1)) == (__default.getPos(input2, _3105_x2));
-                      } else if (((dict1).Contains((_3106_x1))) && ((dict2).Contains((_3105_x2)))) {
+                      BigInteger _3512_x2 = _3511___mcc_h50;
+                      BigInteger _3513_x1 = _3507___mcc_h48;
+                      if (((__default.idsFromInput(input1)).Contains((_3513_x1))) && ((__default.idsFromInput(input2)).Contains((_3512_x2)))) {
+                        _3465_b1 = (__default.getPos(input1, _3513_x1)) == (__default.getPos(input2, _3512_x2));
+                      } else if (((dict1).Contains((_3513_x1))) && ((dict2).Contains((_3512_x2)))) {
                         bool _out3;
-                        _out3 = __default.compareDictElems(input1, input2, dict1, dict2, _3106_x1, _3105_x2, Dafny.Set<BigInteger>.Union(prev__ids1, Dafny.Set<BigInteger>.FromElements(key1)), Dafny.Set<BigInteger>.Union(prev__ids2, Dafny.Set<BigInteger>.FromElements(key2)));
-                        _3058_b1 = _out3;
+                        _out3 = __default.compareDictElems(input1, input2, dict1, dict2, _3513_x1, _3512_x2, Dafny.Set<BigInteger>.Union(prev__ids1, Dafny.Set<BigInteger>.FromElements(key1)), Dafny.Set<BigInteger>.Union(prev__ids2, Dafny.Set<BigInteger>.FromElements(key2)));
+                        _3465_b1 = _out3;
                       } else {
-                        _3058_b1 = false;
+                        _3465_b1 = false;
                       }
                     }
                   }
                 }
               }
-              if (_3058_b1) {
-                _System.Tuple2<BasicTerm, BasicTerm> _source24 = @_System.Tuple2<BasicTerm, BasicTerm>.create(_3057_el11, _3054_el22);
+              if (_3465_b1) {
+                _System.Tuple2<BasicTerm, BasicTerm> _source28 = @_System.Tuple2<BasicTerm, BasicTerm>.create(_3464_el11, _3461_el22);
                 {
-                  BasicTerm _3107___mcc_h51 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source24)._0;
-                  BasicTerm _3108___mcc_h52 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source24)._1;
-                  BasicTerm _source25 = _3107___mcc_h51;
-                  if (_source25.is_Value) {
-                    BigInteger _3109___mcc_h53 = ((BasicTerm_Value)_source25).val;
-                    BasicTerm _source26 = _3108___mcc_h52;
-                    if (_source26.is_Value) {
-                      BigInteger _3110___mcc_h54 = ((BasicTerm_Value)_source26).val;
+                  BasicTerm _3514___mcc_h51 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source28)._0;
+                  BasicTerm _3515___mcc_h52 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source28)._1;
+                  BasicTerm _source29 = _3514___mcc_h51;
+                  if (_source29.is_Value) {
+                    BigInteger _3516___mcc_h53 = ((BasicTerm_Value)_source29).val;
+                    BasicTerm _source30 = _3515___mcc_h52;
+                    if (_source30.is_Value) {
+                      BigInteger _3517___mcc_h54 = ((BasicTerm_Value)_source30).val;
                       {
-                        BigInteger _3111_x2 = _3110___mcc_h54;
-                        BigInteger _3112_x1 = _3109___mcc_h53;
-                        _3058_b1 = (_3112_x1) == (_3111_x2);
+                        BigInteger _3518_x2 = _3517___mcc_h54;
+                        BigInteger _3519_x1 = _3516___mcc_h53;
+                        _3465_b1 = (_3519_x1) == (_3518_x2);
                       }
                     } else {
-                      BigInteger _3113___mcc_h55 = ((BasicTerm_StackVar)_source26).id;
+                      BigInteger _3520___mcc_h55 = ((BasicTerm_StackVar)_source30).id;
                       {
-                        BigInteger _3114_x2 = _3113___mcc_h55;
-                        BigInteger _3115_x1 = _3109___mcc_h53;
+                        BigInteger _3521_x2 = _3520___mcc_h55;
+                        BigInteger _3522_x1 = _3516___mcc_h53;
                         {
-                          _3058_b1 = false;
+                          _3465_b1 = false;
                         }
                       }
                     }
                   } else {
-                    BigInteger _3116___mcc_h56 = ((BasicTerm_StackVar)_source25).id;
-                    BasicTerm _source27 = _3108___mcc_h52;
-                    if (_source27.is_Value) {
-                      BigInteger _3117___mcc_h57 = ((BasicTerm_Value)_source27).val;
+                    BigInteger _3523___mcc_h56 = ((BasicTerm_StackVar)_source29).id;
+                    BasicTerm _source31 = _3515___mcc_h52;
+                    if (_source31.is_Value) {
+                      BigInteger _3524___mcc_h57 = ((BasicTerm_Value)_source31).val;
                       {
-                        BigInteger _3118_x2 = _3117___mcc_h57;
-                        BigInteger _3119_x1 = _3116___mcc_h56;
+                        BigInteger _3525_x2 = _3524___mcc_h57;
+                        BigInteger _3526_x1 = _3523___mcc_h56;
                         {
-                          _3058_b1 = false;
+                          _3465_b1 = false;
                         }
                       }
                     } else {
-                      BigInteger _3120___mcc_h58 = ((BasicTerm_StackVar)_source27).id;
+                      BigInteger _3527___mcc_h58 = ((BasicTerm_StackVar)_source31).id;
                       {
-                        BigInteger _3121_x2 = _3120___mcc_h58;
-                        BigInteger _3122_x1 = _3116___mcc_h56;
-                        if (((__default.idsFromInput(input1)).Contains((_3122_x1))) && ((__default.idsFromInput(input2)).Contains((_3121_x2)))) {
-                          _3058_b1 = (__default.getPos(input1, _3122_x1)) == (__default.getPos(input2, _3121_x2));
-                        } else if (((dict1).Contains((_3122_x1))) && ((dict2).Contains((_3121_x2)))) {
+                        BigInteger _3528_x2 = _3527___mcc_h58;
+                        BigInteger _3529_x1 = _3523___mcc_h56;
+                        if (((__default.idsFromInput(input1)).Contains((_3529_x1))) && ((__default.idsFromInput(input2)).Contains((_3528_x2)))) {
+                          _3465_b1 = (__default.getPos(input1, _3529_x1)) == (__default.getPos(input2, _3528_x2));
+                        } else if (((dict1).Contains((_3529_x1))) && ((dict2).Contains((_3528_x2)))) {
                           bool _out4;
-                          _out4 = __default.compareDictElems(input1, input2, dict1, dict2, _3122_x1, _3121_x2, Dafny.Set<BigInteger>.Union(prev__ids1, Dafny.Set<BigInteger>.FromElements(key1)), Dafny.Set<BigInteger>.Union(prev__ids2, Dafny.Set<BigInteger>.FromElements(key2)));
-                          _3058_b1 = _out4;
+                          _out4 = __default.compareDictElems(input1, input2, dict1, dict2, _3529_x1, _3528_x2, Dafny.Set<BigInteger>.Union(prev__ids1, Dafny.Set<BigInteger>.FromElements(key1)), Dafny.Set<BigInteger>.Union(prev__ids2, Dafny.Set<BigInteger>.FromElements(key2)));
+                          _3465_b1 = _out4;
                         } else {
-                          _3058_b1 = false;
+                          _3465_b1 = false;
                         }
                       }
                     }
                   }
                 }
-                b = _3058_b1;
+                b = _3465_b1;
                 return b;
               } else {
                 b = false;
@@ -2804,88 +2890,88 @@ namespace _module {
     public static bool areEquivalentSFS(ASFS sfs1, ASFS sfs2)
     {
       bool b = false;
-      _System.Tuple2<ASFS, ASFS> _source28 = @_System.Tuple2<ASFS, ASFS>.create(sfs1, sfs2);
+      _System.Tuple2<ASFS, ASFS> _source32 = @_System.Tuple2<ASFS, ASFS>.create(sfs1, sfs2);
       {
-        ASFS _3123___mcc_h0 = ((_System.Tuple2<ASFS, ASFS>)_source28)._0;
-        ASFS _3124___mcc_h1 = ((_System.Tuple2<ASFS, ASFS>)_source28)._1;
-        ASFS _source29 = _3123___mcc_h0;
+        ASFS _3530___mcc_h0 = ((_System.Tuple2<ASFS, ASFS>)_source32)._0;
+        ASFS _3531___mcc_h1 = ((_System.Tuple2<ASFS, ASFS>)_source32)._1;
+        ASFS _source33 = _3530___mcc_h0;
         {
-          Dafny.ISequence<BasicTerm> _3125___mcc_h2 = ((ASFS)_source29).input;
-          Dafny.IMap<BigInteger,StackElem> _3126___mcc_h3 = ((ASFS)_source29).dict;
-          Dafny.ISequence<BasicTerm> _3127___mcc_h4 = ((ASFS)_source29).output;
-          ASFS _source30 = _3124___mcc_h1;
+          Dafny.ISequence<BasicTerm> _3532___mcc_h2 = ((ASFS)_source33).input;
+          Dafny.IMap<BigInteger,StackElem> _3533___mcc_h3 = ((ASFS)_source33).dict;
+          Dafny.ISequence<BasicTerm> _3534___mcc_h4 = ((ASFS)_source33).output;
+          ASFS _source34 = _3531___mcc_h1;
           {
-            Dafny.ISequence<BasicTerm> _3128___mcc_h5 = ((ASFS)_source30).input;
-            Dafny.IMap<BigInteger,StackElem> _3129___mcc_h6 = ((ASFS)_source30).dict;
-            Dafny.ISequence<BasicTerm> _3130___mcc_h7 = ((ASFS)_source30).output;
+            Dafny.ISequence<BasicTerm> _3535___mcc_h5 = ((ASFS)_source34).input;
+            Dafny.IMap<BigInteger,StackElem> _3536___mcc_h6 = ((ASFS)_source34).dict;
+            Dafny.ISequence<BasicTerm> _3537___mcc_h7 = ((ASFS)_source34).output;
             {
-              Dafny.ISequence<BasicTerm> _3131_output2 = _3130___mcc_h7;
-              Dafny.IMap<BigInteger,StackElem> _3132_dict2 = _3129___mcc_h6;
-              Dafny.ISequence<BasicTerm> _3133_input2 = _3128___mcc_h5;
-              Dafny.ISequence<BasicTerm> _3134_output1 = _3127___mcc_h4;
-              Dafny.IMap<BigInteger,StackElem> _3135_dict1 = _3126___mcc_h3;
-              Dafny.ISequence<BasicTerm> _3136_input1 = _3125___mcc_h2;
-              if (((new BigInteger((_3136_input1).Count)) != (new BigInteger((_3133_input2).Count))) || ((new BigInteger((_3134_output1).Count)) != (new BigInteger((_3131_output2).Count)))) {
+              Dafny.ISequence<BasicTerm> _3538_output2 = _3537___mcc_h7;
+              Dafny.IMap<BigInteger,StackElem> _3539_dict2 = _3536___mcc_h6;
+              Dafny.ISequence<BasicTerm> _3540_input2 = _3535___mcc_h5;
+              Dafny.ISequence<BasicTerm> _3541_output1 = _3534___mcc_h4;
+              Dafny.IMap<BigInteger,StackElem> _3542_dict1 = _3533___mcc_h3;
+              Dafny.ISequence<BasicTerm> _3543_input1 = _3532___mcc_h2;
+              if (((new BigInteger((_3543_input1).Count)) != (new BigInteger((_3540_input2).Count))) || ((new BigInteger((_3541_output1).Count)) != (new BigInteger((_3538_output2).Count)))) {
                 b = false;
                 return b;
               } else {
-                BigInteger _3137_i;
-                _3137_i = BigInteger.Zero;
-                while ((_3137_i) < (new BigInteger((_3134_output1).Count))) {
-                  _System.Tuple2<BasicTerm, BasicTerm> _source31 = @_System.Tuple2<BasicTerm, BasicTerm>.create((_3134_output1).Select(_3137_i), (_3131_output2).Select(_3137_i));
+                BigInteger _3544_i;
+                _3544_i = BigInteger.Zero;
+                while ((_3544_i) < (new BigInteger((_3541_output1).Count))) {
+                  _System.Tuple2<BasicTerm, BasicTerm> _source35 = @_System.Tuple2<BasicTerm, BasicTerm>.create((_3541_output1).Select(_3544_i), (_3538_output2).Select(_3544_i));
                   {
-                    BasicTerm _3138___mcc_h16 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source31)._0;
-                    BasicTerm _3139___mcc_h17 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source31)._1;
-                    BasicTerm _source32 = _3138___mcc_h16;
-                    if (_source32.is_Value) {
-                      BigInteger _3140___mcc_h18 = ((BasicTerm_Value)_source32).val;
-                      BasicTerm _source33 = _3139___mcc_h17;
-                      if (_source33.is_Value) {
-                        BigInteger _3141___mcc_h19 = ((BasicTerm_Value)_source33).val;
+                    BasicTerm _3545___mcc_h16 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source35)._0;
+                    BasicTerm _3546___mcc_h17 = ((_System.Tuple2<BasicTerm, BasicTerm>)_source35)._1;
+                    BasicTerm _source36 = _3545___mcc_h16;
+                    if (_source36.is_Value) {
+                      BigInteger _3547___mcc_h18 = ((BasicTerm_Value)_source36).val;
+                      BasicTerm _source37 = _3546___mcc_h17;
+                      if (_source37.is_Value) {
+                        BigInteger _3548___mcc_h19 = ((BasicTerm_Value)_source37).val;
                         {
-                          BigInteger _3142_x2 = _3141___mcc_h19;
-                          BigInteger _3143_x1 = _3140___mcc_h18;
-                          if ((_3143_x1) != (_3142_x2)) {
+                          BigInteger _3549_x2 = _3548___mcc_h19;
+                          BigInteger _3550_x1 = _3547___mcc_h18;
+                          if ((_3550_x1) != (_3549_x2)) {
                             b = false;
                             return b;
                           }
                         }
                       } else {
-                        BigInteger _3144___mcc_h20 = ((BasicTerm_StackVar)_source33).id;
+                        BigInteger _3551___mcc_h20 = ((BasicTerm_StackVar)_source37).id;
                         {
-                          BigInteger _3145_x2 = _3144___mcc_h20;
-                          BigInteger _3146_x1 = _3140___mcc_h18;
+                          BigInteger _3552_x2 = _3551___mcc_h20;
+                          BigInteger _3553_x1 = _3547___mcc_h18;
                           b = false;
                           return b;
                         }
                       }
                     } else {
-                      BigInteger _3147___mcc_h21 = ((BasicTerm_StackVar)_source32).id;
-                      BasicTerm _source34 = _3139___mcc_h17;
-                      if (_source34.is_Value) {
-                        BigInteger _3148___mcc_h22 = ((BasicTerm_Value)_source34).val;
+                      BigInteger _3554___mcc_h21 = ((BasicTerm_StackVar)_source36).id;
+                      BasicTerm _source38 = _3546___mcc_h17;
+                      if (_source38.is_Value) {
+                        BigInteger _3555___mcc_h22 = ((BasicTerm_Value)_source38).val;
                         {
-                          BigInteger _3149_x2 = _3148___mcc_h22;
-                          BigInteger _3150_x1 = _3147___mcc_h21;
+                          BigInteger _3556_x2 = _3555___mcc_h22;
+                          BigInteger _3557_x1 = _3554___mcc_h21;
                           b = false;
                           return b;
                         }
                       } else {
-                        BigInteger _3151___mcc_h23 = ((BasicTerm_StackVar)_source34).id;
+                        BigInteger _3558___mcc_h23 = ((BasicTerm_StackVar)_source38).id;
                         {
-                          BigInteger _3152_x2 = _3151___mcc_h23;
-                          BigInteger _3153_x1 = _3147___mcc_h21;
-                          if (((__default.idsFromInput(_3136_input1)).Contains((_3153_x1))) && ((__default.idsFromInput(_3133_input2)).Contains((_3152_x2)))) {
-                            if ((__default.getPos(_3136_input1, _3153_x1)) != (__default.getPos(_3133_input2, _3152_x2))) {
+                          BigInteger _3559_x2 = _3558___mcc_h23;
+                          BigInteger _3560_x1 = _3554___mcc_h21;
+                          if (((__default.idsFromInput(_3543_input1)).Contains((_3560_x1))) && ((__default.idsFromInput(_3540_input2)).Contains((_3559_x2)))) {
+                            if ((__default.getPos(_3543_input1, _3560_x1)) != (__default.getPos(_3540_input2, _3559_x2))) {
                               b = false;
                               return b;
                             }
-                          } else if (((_3135_dict1).Contains((_3153_x1))) && ((_3132_dict2).Contains((_3152_x2)))) {
-                            bool _3154_aux;
+                          } else if (((_3542_dict1).Contains((_3560_x1))) && ((_3539_dict2).Contains((_3559_x2)))) {
+                            bool _3561_aux;
                             bool _out5;
-                            _out5 = __default.compareDictElems(_3136_input1, _3133_input2, _3135_dict1, _3132_dict2, _3153_x1, _3152_x2, Dafny.Set<BigInteger>.FromElements(), Dafny.Set<BigInteger>.FromElements());
-                            _3154_aux = _out5;
-                            if (!(_3154_aux)) {
+                            _out5 = __default.compareDictElems(_3543_input1, _3540_input2, _3542_dict1, _3539_dict2, _3560_x1, _3559_x2, Dafny.Set<BigInteger>.FromElements(), Dafny.Set<BigInteger>.FromElements());
+                            _3561_aux = _out5;
+                            if (!(_3561_aux)) {
                               b = false;
                               return b;
                             }
@@ -2897,7 +2983,7 @@ namespace _module {
                       }
                     }
                   }
-                  _3137_i = (_3137_i) + (BigInteger.One);
+                  _3544_i = (_3544_i) + (BigInteger.One);
                 }
                 b = true;
                 return b;
