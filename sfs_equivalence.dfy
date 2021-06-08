@@ -6,8 +6,10 @@ datatype BasicTerm = Value(val:int) | StackVar(id:int)
 // can only have two parameters.
 datatype StackElem = Op(input_stack:seq<BasicTerm>) | COp(elem1:BasicTerm, elem2:BasicTerm)
 
-// An abstract SFS contains an initial stack, a map and the output stack.
-datatype ASFS = SFS(input:seq<BasicTerm>, dict:map<int,StackElem>, output:seq<BasicTerm>)
+// datatype SFS = SFS(input:seq<BasicTerm>, output:seq<StackElem>)
+
+// An abstract ASFS contains an initial stack, a map and the output stack.
+datatype ASFS = ASFS(input:seq<BasicTerm>, dict:map<int,StackElem>, output:seq<BasicTerm>)
 
 // *** Auxiliary predicates and functions
 
@@ -185,14 +187,14 @@ predicate outputIsWellDefined(inputStack:seq<BasicTerm>, dict:map<int, StackElem
     forall elem :: elem in output ==> match elem {case Value(x) => true case StackVar(id) => id in dict || id in idsFromInput(inputStack)}
 }
 
-// *** SFS related definitions
+// *** ASFS related definitions
 
-// A SFS must satisfy the conditions from the initial stack, the final one and the dict. Besides, all elements in the dict must
-// appear as parameters of some of the elements in the final stack.
-predicate isSFS(sfs:ASFS)
+// A ASFS must satisfy the conditions from the initial stack, the final one and the dict. Besides, all elements in the dict must
+// appear as parameters of some of the elements in the final stack (minimal representation)
+predicate isSFS(asfs:ASFS)
 {
-    match sfs 
-        case SFS(input, dict, output) => initialInputIsWellDefined(input) && dictIsWellDefined(input, dict) && outputIsWellDefined(input, dict, output)
+    match asfs 
+        case ASFS(input, dict, output) => initialInputIsWellDefined(input) && dictIsWellDefined(input, dict) && outputIsWellDefined(input, dict, output)
             && (set x,id | id in dict && x in dependentIds(input, dict, id, {}) :: x) == dict.Keys
 }
 
@@ -289,14 +291,14 @@ requires dict2.Keys * idsFromInput(input2) == {}
         case (Op(l1), COp(x2, y2))  => false
 }
 
-// Two SFS are equivalent if the size of both initial and final stack is the same, and
+// Two ASFS are equivalent if the size of both initial and final stack is the same, and
 // if all stack variables in the final stack are equivalent according to the definition above.
-predicate areEquivalent(sfs1:ASFS, sfs2:ASFS)
-requires isSFS(sfs1)
-requires isSFS(sfs2)
+predicate areEquivalent(asfs1:ASFS, asfs2:ASFS)
+requires isSFS(asfs1)
+requires isSFS(asfs2)
 {
-    match (sfs1, sfs2) 
-        case (SFS(input1, dict1, output1), SFS(input2, dict2, output2)) => |input1| == |input2| && |output1| == |output2| 
+    match (asfs1, asfs2) 
+        case (ASFS(input1, dict1, output1), ASFS(input2, dict2, output2)) => |input1| == |input2| && |output1| == |output2| 
         && (forall i :: 0 <= i < |output1| ==> match (output1[i], output2[i])
         {
             case (Value(x1), Value(x2)) => x1 == x2 
@@ -496,15 +498,15 @@ ensures b == compareStackElem(input1, input2, dict1, dict2, key1, key2, prev_ids
 }
 
 
-// Method for checking two sfs are equivalent. It is sound and complete, and
+// Method for checking two ASFS are equivalent. It is sound and complete, and
 // follows the idea from the predicate
-method areEquivalentSFS(sfs1:ASFS, sfs2:ASFS) returns (b:bool)
-requires isSFS(sfs1)
-requires isSFS(sfs2)
-ensures b == areEquivalent(sfs1, sfs2)
+method areEquivalentSFS(asfs1:ASFS, asfs2:ASFS) returns (b:bool)
+requires isSFS(asfs1)
+requires isSFS(asfs2)
+ensures b == areEquivalent(asfs1, asfs2)
 {
-    match (sfs1, sfs2) 
-        case (SFS(input1, dict1, output1), SFS(input2, dict2, output2)) => 
+    match (asfs1, asfs2) 
+        case (ASFS(input1, dict1, output1), ASFS(input2, dict2, output2)) => 
             if(|input1| != |input2| || |output1| != |output2|){
                 return false;
             } 
