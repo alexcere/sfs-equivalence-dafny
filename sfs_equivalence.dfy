@@ -191,7 +191,7 @@ predicate outputIsWellDefined(inputStack:seq<BasicTerm>, dict:map<int, StackElem
 
 // A ASFS must satisfy the conditions from the initial stack, the final one and the dict. Besides, all elements in the dict must
 // appear as parameters of some of the elements in the final stack (minimal representation)
-predicate isSFS(asfs:ASFS)
+predicate isASFS(asfs:ASFS)
 {
     match asfs 
         case ASFS(input, dict, output) => initialInputIsWellDefined(input) && dictIsWellDefined(input, dict) && outputIsWellDefined(input, dict, output)
@@ -294,8 +294,8 @@ requires dict2.Keys * idsFromInput(input2) == {}
 // Two ASFS are equivalent if the size of both initial and final stack is the same, and
 // if all stack variables in the final stack are equivalent according to the definition above.
 predicate areEquivalent(asfs1:ASFS, asfs2:ASFS)
-requires isSFS(asfs1)
-requires isSFS(asfs2)
+requires isASFS(asfs1)
+requires isASFS(asfs2)
 {
     match (asfs1, asfs2) 
         case (ASFS(input1, dict1, output1), ASFS(input2, dict2, output2)) => |input1| == |input2| && |output1| == |output2| 
@@ -500,9 +500,9 @@ ensures b == compareStackElem(input1, input2, dict1, dict2, key1, key2, prev_ids
 
 // Method for checking two ASFS are equivalent. It is sound and complete, and
 // follows the idea from the predicate
-method areEquivalentSFS(asfs1:ASFS, asfs2:ASFS) returns (b:bool)
-requires isSFS(asfs1)
-requires isSFS(asfs2)
+method areEquivalentASFS(asfs1:ASFS, asfs2:ASFS) returns (b:bool)
+requires isASFS(asfs1)
+requires isASFS(asfs2)
 ensures b == areEquivalent(asfs1, asfs2)
 {
     match (asfs1, asfs2) 

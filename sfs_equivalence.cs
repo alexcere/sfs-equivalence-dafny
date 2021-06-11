@@ -16,7 +16,7 @@ datatype BasicTerm = Value(val: int) | StackVar(id: int)
 
 datatype StackElem = Op(input_stack: seq<BasicTerm>) | COp(elem1: BasicTerm, elem2: BasicTerm)
 
-datatype ASFS = SFS(input: seq<BasicTerm>, dict: map<int, StackElem>, output: seq<BasicTerm>)
+datatype ASFS = ASFS(input: seq<BasicTerm>, dict: map<int, StackElem>, output: seq<BasicTerm>)
 
 predicate isStackVar(el: BasicTerm)
   decreases el
@@ -165,11 +165,11 @@ predicate outputIsWellDefined(inputStack: seq<BasicTerm>, dict: map<int, StackEl
       match elem { case Value(_mcc#0) => (var x := _mcc#0; true) case StackVar(_mcc#1) => var id := _mcc#1; id in dict || id in idsFromInput(inputStack) }
 }
 
-predicate isSFS(sfs: ASFS)
-  decreases sfs
+predicate isASFS(asfs: ASFS)
+  decreases asfs
 {
-  match sfs
-  case SFS(input, dict, output) =>
+  match asfs
+  case ASFS(input, dict, output) =>
     initialInputIsWellDefined(input) &&
     dictIsWellDefined(input, dict) &&
     outputIsWellDefined(input, dict, output) &&
@@ -204,13 +204,13 @@ predicate compareStackElem(input1: seq<BasicTerm>, input2: seq<BasicTerm>, dict1
     false
 }
 
-predicate areEquivalent(sfs1: ASFS, sfs2: ASFS)
-  requires isSFS(sfs1)
-  requires isSFS(sfs2)
-  decreases sfs1, sfs2
+predicate areEquivalent(asfs1: ASFS, asfs2: ASFS)
+  requires isASFS(asfs1)
+  requires isASFS(asfs2)
+  decreases asfs1, asfs2
 {
-  match (sfs1, sfs2)
-  case (SFS(input1, dict1, output1), SFS(input2, dict2, output2)) =>
+  match (asfs1, asfs2)
+  case (ASFS(input1, dict1, output1), ASFS(input2, dict2, output2)) =>
     |input1| == |input2| &&
     |output1| == |output2| &&
     forall i :: 
@@ -371,14 +371,14 @@ method compareDictElems(input1: seq<BasicTerm>, input2: seq<BasicTerm>, dict1: m
     return false;
 }
 
-method areEquivalentSFS(sfs1: ASFS, sfs2: ASFS) returns (b: bool)
-  requires isSFS(sfs1)
-  requires isSFS(sfs2)
-  ensures b == areEquivalent(sfs1, sfs2)
-  decreases sfs1, sfs2
+method areEquivalentASFS(asfs1: ASFS, asfs2: ASFS) returns (b: bool)
+  requires isASFS(asfs1)
+  requires isASFS(asfs2)
+  ensures b == areEquivalent(asfs1, asfs2)
+  decreases asfs1, asfs2
 {
-  match (sfs1, sfs2)
-  case (SFS(input1, dict1, output1), SFS(input2, dict2, output2)) =>
+  match (asfs1, asfs2)
+  case (ASFS(input1, dict1, output1), ASFS(input2, dict2, output2)) =>
     if |input1| != |input2| || |output1| != |output2| {
       return false;
     } else {
@@ -2341,7 +2341,7 @@ namespace _module {
       return (int) hash;
     }
     public override string ToString() {
-      string s = "ASFS.SFS";
+      string s = "ASFS.ASFS";
       s += "(";
       s += Dafny.Helpers.ToString(this.input);
       s += ", ";
@@ -2362,7 +2362,7 @@ namespace _module {
     public static ASFS create(Dafny.ISequence<BasicTerm> input, Dafny.IMap<BigInteger,StackElem> dict, Dafny.ISequence<BasicTerm> output) {
       return new ASFS(input, dict, output);
     }
-    public bool is_SFS { get { return true; } }
+    public bool is_ASFS { get { return true; } }
     public Dafny.ISequence<BasicTerm> dtor_input {
       get {
         return this.input;
@@ -2887,10 +2887,10 @@ namespace _module {
       }
       return b;
     }
-    public static bool areEquivalentSFS(ASFS sfs1, ASFS sfs2)
+    public static bool areEquivalentASFS(ASFS asfs1, ASFS asfs2)
     {
       bool b = false;
-      _System.Tuple2<ASFS, ASFS> _source32 = @_System.Tuple2<ASFS, ASFS>.create(sfs1, sfs2);
+      _System.Tuple2<ASFS, ASFS> _source32 = @_System.Tuple2<ASFS, ASFS>.create(asfs1, asfs2);
       {
         ASFS _3530___mcc_h0 = ((_System.Tuple2<ASFS, ASFS>)_source32)._0;
         ASFS _3531___mcc_h1 = ((_System.Tuple2<ASFS, ASFS>)_source32)._1;
